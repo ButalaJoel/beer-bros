@@ -8,7 +8,7 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [x] Create responsive Home story-feed demo, Search, inbox preview, and separate discovery experience.
 - [x] Create private GitHub repository and push the initial project.
 - [x] Seed Ugandan and imported drinks catalogue.
-- [ ] Run production build and resolve any errors. **Blocked:** npm registry access was unavailable in the initial environment, so dependencies are not installed and `npm run build` stops at missing `tsc`.
+- [x] Run production build and resolve any errors.
 - [ ] Configure brand assets and real profile photography.
 
 ## Phase 1 — Product validation and UX
@@ -19,10 +19,12 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [ ] Define beta success and safety metrics.
 
 ## Phase 2 — Backend foundation on Render
-- [ ] Create Render web service and PostgreSQL database; configure secrets and environment separation.
-- [ ] Implement TypeScript API, database migrations, auth, age eligibility gate, profile schema, session security, and account deletion.
+- [ ] Create Render web service and PostgreSQL database; configure secrets and environment separation. Blueprint is prepared for a free preview; do not store real member data on the 30-day free database.
+- [x] Implement TypeScript API, initial schema, registration/login, server-side 18+ gate, and profile/story/follow/search endpoints.
+- [x] Add authenticated conversation/message routes and Socket.IO room authorization.
+- [ ] Add account recovery, email verification, and account deletion workflow.
 - [ ] Add photo storage provider and upload validation.
-- [ ] Add migrations, typed data access, and automated policy/security checks.
+- [ ] Apply schema to a real database and add migration verification and broader security checks.
 
 ## Phase 3 — Discovery and matching
 - [ ] Implement consent-based approximate location and server-side candidate selection.
@@ -40,8 +42,10 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [ ] Operate closed beta, review safety metrics, fix issues, then make a launch decision.
 
 ## Current status and blockers
-- Phase 0 implementation is present; build validation remains pending in this initial handoff.
+- Local frontend and backend builds pass. API smoke checks pass for health, required authentication, the 18+ registration gate, and request-origin protection.
 - Private repository exists at `https://github.com/ButalaJoel/beer-bros`; the local `main` branch tracks `origin/main`.
-- Vercel and Render integrations are available but not connected; no deployment configuration or credentials are set.
-- No production account, feed, follow, search, discovery, persistent messaging, or moderation service exists.
+- Vercel dashboard control failed in this session, so no frontend deployment has been created.
+- Backend code is not connected to the frontend; PostgreSQL schema has not been applied to a provisioned database.
+- Render Free Postgres expires after 30 days. Choose a durable database plan before storing real accounts or conversations.
+- No production discovery matching, moderation operations, account recovery, or deletion exists.
 - Vercel + Render is the agreed hosting target. Production database will be PostgreSQL on Render unless a later requirement changes the decision.

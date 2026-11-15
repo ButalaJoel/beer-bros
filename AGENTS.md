@@ -24,7 +24,7 @@ Beer BROS is a premium, mobile-first social network for adults aged 18+ in Ugand
 - Keep backend services under `server/` with route, service, repository, middleware, schema/migration, and test layers. Client feature modules stay under `src/features/`; typed API clients under `src/lib/api/`.
 - Keep integrations behind typed boundaries and environment variables. Local demo must remain usable without production credentials while being clearly distinguished from real account and social actions.
 - Do not put secrets in the client bundle. Privileged keys and database credentials belong only in Render environment variables. Vercel receives only explicitly public frontend configuration.
-- Do not put secrets in the client bundle. Only expose documented public Supabase URL/anon key variables; privileged operations belong in server-side functions.
+- The current backend uses a Render-hosted Node API and PostgreSQL. Do not add a Supabase dependency unless the architecture is explicitly changed and documented.
 - Use strict TypeScript, semantic HTML, accessible labels/focus states, responsive layouts, and reduced-motion support.
 - Keep product requirements in `docs/PRD.md`, milestones/status in `docs/ROADMAP.md`, and setup/current state in `README.md`. Update all relevant docs when decisions or status change.
 
@@ -38,6 +38,7 @@ Beer BROS is a premium, mobile-first social network for adults aged 18+ in Ugand
 ## Current implementation decisions
 - Existing initial release is a client-side local discovery demo with in-memory swipe state and seeded profiles/catalogue. Refresh resets demo decisions.
 - The product direction is now a broader social network with home feed, stories, follows, search, messaging, and a complementary discovery feature.
+- A TypeScript Express/PostgreSQL/Socket.IO API scaffold now exists under `server/`, including account, feed, follow, search, report/block, and conversation routes. It builds and has a limited API smoke check. The frontend is not yet wired to this API; no real database has been provisioned, and the backend must not be described as production-ready.
 - Production hosting target: Vercel frontend and Render backend/API/database. This is an architecture target; no accounts, services, or credentials are connected yet.
 - Product name is “Beer BROS”; working tagline is “Good company. Your kind of night.”
 - Initial discovery is a single-profile card with pass/interest controls; a mutual match is simulated only in the seeded demo when applicable.

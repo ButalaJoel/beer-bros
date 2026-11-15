@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: beer-bros-api
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npm run server:build && npm run db:migrate
+    startCommand: npm run server:start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: WEB_ORIGIN
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: beer-bros-db
+          property: connectionString
+
+databases:
+  - name: beer-bros-db
+    plan: free
+    region: oregon

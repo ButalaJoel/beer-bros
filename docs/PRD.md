@@ -43,6 +43,7 @@ Give adults a welcoming place to share memorable social stories, follow people a
 ### Messaging
 - Authenticated members can start or continue an authorized one-to-one conversation subject to product privacy rules.
 - Messages are persistent and delivered through a server-authorized API; live delivery uses WebSockets when configured.
+- Initial API code now has session-backed registration/login, stories, follows, search, report/block, conversation history, and authenticated Socket.IO message handling. The frontend is not yet wired to these endpoints; a real database has not been provisioned.
 - Support message history, unread state, report/block, and conversation controls. Prevent messaging blocked users; rate-limit new conversations and sends.
 
 ### Discovery
@@ -86,6 +87,7 @@ Give adults a welcoming place to share memorable social stories, follow people a
 ## 7. Hosting and system architecture
 - Frontend: React/Vite application deployed on Vercel.
 - Backend: TypeScript API deployed on Render, backed by PostgreSQL; WebSockets support live messaging.
+- After Render assigns the API URL, route `/api/*` through the Vercel app origin or otherwise configure credentialed cross-origin requests and cookie behavior.
 - Local development supports separate client and server processes with documented environment examples.
 - Keep authorization, validation, feed ranking, matching, search filters, and privacy enforcement server-side.
 
@@ -97,5 +99,5 @@ Give adults a welcoming place to share memorable social stories, follow people a
 - Legal/privacy review for Uganda and target markets.
 - Verified 18+ onboarding and safe location design.
 - Block/report/unmatch and operational moderation available.
-- Supabase policies, storage protections, auth flows, abuse controls, and deletion verified.
+- PostgreSQL permissions, storage protections, auth flows, abuse controls, and deletion verified.
 - Accessibility, security, performance, and device testing completed.
