@@ -9,6 +9,7 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [x] Create private GitHub repository and push the initial project.
 - [x] Seed Ugandan and imported drinks catalogue.
 - [x] Run production build and resolve any errors.
+- [x] Deploy and verify the public Vercel front-end preview at `https://beer-bros-nine.vercel.app`.
 - [ ] Configure brand assets and real profile photography.
 
 ## Phase 1 — Product validation and UX
@@ -25,8 +26,9 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [ ] Add account recovery, email verification, and account deletion workflow.
 - [ ] Add photo storage provider and upload validation.
 - [x] Apply the initial schema to the preview database during Render build; add independent migration verification and broader security checks.
-- [x] Deploy API service to Render Free from the private GitHub repository; deployment is marked Live. Public health endpoint DNS verification is still pending.
-- [ ] Complete Vercel Hobby project creation after user enters the email verification code; front-end deploy is not live yet.
+- [x] Deploy API service to Render Free from the private GitHub repository; Render marks it Live and its deploy logs confirm the health check and database migration succeeded.
+- [x] Set Render `WEB_ORIGIN` to `https://beer-bros-nine.vercel.app` and redeploy.
+- [ ] Verify the Render public hostname from an external browser/network; the current browser environment reports DNS resolution failure despite Render’s Live status.
 
 ## Phase 3 — Discovery and matching
 - [ ] Implement consent-based approximate location and server-side candidate selection.
@@ -44,9 +46,9 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [ ] Operate closed beta, review safety metrics, fix issues, then make a launch decision.
 
 ## Current status and blockers
-- Local frontend and backend builds pass. API smoke checks pass for health, required authentication, the 18+ registration gate, and request-origin protection. Render API build is Live at `https://beer-bros-api.onrender.com`; a public health URL check returned DNS resolution failure in this session and needs retry.
+- Local frontend and backend builds pass. API smoke checks pass for health, required authentication, the 18+ registration gate, and request-origin protection. Vercel preview loads at `https://beer-bros-nine.vercel.app`. Render build logs confirm the backend starts and the database schema is up to date; its dashboard marks it Live at `https://beer-bros-api.onrender.com`.
 - Private repository exists at `https://github.com/ButalaJoel/beer-bros`; the local `main` branch tracks `origin/main`.
-- Vercel project setup is awaiting the account owner’s one-time email verification; no frontend deployment is live yet.
+- The public Render hostname did not resolve during a direct external check from the current browser environment; retry from another network/browser before relying on it.
 - Backend code is not connected to the frontend. Render has created the preview database and the build invokes the initial migration.
 - Render Free Postgres expires after 30 days. Choose a durable database plan before storing real accounts or conversations.
 - No production discovery matching, moderation operations, account recovery, or deletion exists.

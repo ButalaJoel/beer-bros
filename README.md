@@ -3,18 +3,18 @@
 Premium social network for adults 18+ in Uganda: share your best social stories, follow accounts, search, message, and discover nearby people. **Good company. Your kind of night.**
 
 ## Current status
-Free preview is in progress. The responsive Home story feed, local posting/reactions/replies/follows, Search, demo inbox, and separate discovery are still UI demos whose actions reset on reload. The Render Blueprint `beer-bros-preview` has created the free `beer-bros-api` service and PostgreSQL database; the API build is Live at [beer-bros-api.onrender.com](https://beer-bros-api.onrender.com). Its schema migration runs as part of deploy. The service uses a free instance and free database, so expect cold starts and temporary database retention. The front end is not yet connected to the API. Vercel project import is waiting for account email verification before the front-end deployment can finish.
+Free preview is deployed. The responsive Home story feed, local posting/reactions/replies/follows, Search, demo inbox, and separate discovery remain UI demos whose actions reset on reload. The front end is live at [beer-bros-nine.vercel.app](https://beer-bros-nine.vercel.app). Render Blueprint `beer-bros-preview` created the free `beer-bros-api` service and PostgreSQL database. Render marks the API Live; its deployment logs confirm the schema migration succeeded and the health check passed. The configured `WEB_ORIGIN` is the Vercel preview URL. The front end is not yet connected to the API, so accounts and messages are still demo-only. The Render hostname did not resolve from the browser environment during a direct external check, despite Render reporting the service Live.
 
 ## Technologies
 - React 18, TypeScript, Vite
 - Tailwind CSS
 - Lucide React
 - Express, PostgreSQL, and Socket.IO API scaffold
-- Vercel frontend config and Vercel Hobby project import (verification pending)
-- Render free preview Blueprint: `beer-bros-preview`, service `beer-bros-api`, database `beer-bros-db`
+- Vercel Hobby front end: [beer-bros-nine.vercel.app](https://beer-bros-nine.vercel.app)
+- Render free preview Blueprint: `beer-bros-preview`, service `beer-bros-api`, database `beer-bros-db` (`https://beer-bros-api.onrender.com`)
 
 ## GitHub
-Private source repository: [ButalaJoel/beer-bros](https://github.com/ButalaJoel/beer-bros). The local `main` branch tracks `origin/main`; Render deploys from `main`.
+Private source repository: [ButalaJoel/beer-bros](https://github.com/ButalaJoel/beer-bros). The local `main` branch tracks `origin/main`; Vercel and Render deploy from `main`.
 
 ## Setup
 Requirements: Node.js 20+ and npm.
