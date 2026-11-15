@@ -3,7 +3,7 @@
 Premium social network for adults 18+ in Uganda: share your best social stories, follow accounts, search, message, and discover nearby people. **Good company. Your kind of night.**
 
 ## Current status
-Initial local demo: responsive discovery dashboard, seeded profile cards and drinks catalogue, and in-memory pass/interest interactions. This first screen is only one feature of the intended product. The primary signed-in experience will be a story feed with follows, search, messaging, and separate nearby discovery. Local demo actions do not persist or share. The production build has not been verified because npm dependencies could not be installed in this environment (registry access unavailable); `npm run build` currently stops because TypeScript is not installed.
+Initial local demo: responsive Home story feed, story composer, local reactions/replies/follows, Search, demo inbox, and a separate discovery dashboard with seeded profiles and drinks. All actions are in-memory and reset on reload. No real account or messages exist yet. The production build has not been verified because npm installation is timing out in this environment; `npm run build` currently stops because TypeScript is not installed.
 
 ## Technologies
 - React 18, TypeScript, Vite
@@ -11,6 +11,9 @@ Initial local demo: responsive discovery dashboard, seeded profile cards and dri
 - Lucide React
 - Vercel planned for frontend (not connected)
 - Render planned for TypeScript API and PostgreSQL (not connected)
+
+## GitHub
+Private source repository: [ButalaJoel/beer-bros](https://github.com/ButalaJoel/beer-bros). The local `main` branch tracks `origin/main`.
 
 ## Setup
 Requirements: Node.js 20+ and npm.

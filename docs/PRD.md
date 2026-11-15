@@ -24,6 +24,7 @@ Give adults a welcoming place to share memorable social stories, follow people a
 ## 4. Functional requirements
 ### Home feed and stories
 - Home is the primary signed-in destination and displays a feed of member stories.
+- The local preview now includes seeded stories, a local-only composer, likes, reply affordance, follow controls, and For You/Following filters. These interactions are not backed by accounts or persistent storage.
 - Members can publish text and optionally attach a photo; story length, media rules, visibility, edits, deletion, reactions, and comments must be specified before launch.
 - Feed items identify their author, timestamp, optional topic/drink tag, and reaction/comment counts.
 - Members can react, comment, report content, and open the author profile.
