@@ -32,7 +32,8 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [x] Deploy API service to Render Free from the private GitHub repository; Render marks it Live and its deploy logs confirm the health check and database migration succeeded.
 - [x] Set Render `WEB_ORIGIN` to `https://beer-bros-nine.vercel.app` and redeploy.
 - [ ] Verify the Render public hostname from an external browser/network; the current browser environment reports DNS resolution failure despite Render’s Live status.
-- [ ] Deploy the frontend/API integration from `main`; verify browser registration/login and database-backed post/follow/reply/message round-trip.
+- [x] Deploy the frontend integration to Vercel; verify the live `/api/health` proxy and authenticated `/api/stories` gate.
+- [ ] Use a user-created account to verify registration/login and database-backed post/follow/reply/message round-trip without leaving test accounts in the database.
 
 ## Phase 3 — Discovery and matching
 - [ ] Implement consent-based approximate location and server-side candidate selection.
@@ -53,7 +54,7 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - Local frontend production build and backend TypeScript build pass. The authenticated client now calls the API; live end-to-end verification still requires deployment and a user-created test account.
 - Private repository exists at `https://github.com/ButalaJoel/beer-bros`; the local `main` branch tracks `origin/main`.
 - The public Render hostname did not resolve during a direct external check from the current browser environment; retry from another network/browser before relying on it.
-- Vercel's `/api/*` rewrite must deploy before preview API requests work. Verify the external `/api/health` route and session cookie through Vercel after deployment.
+- The Vercel rewrite to Render is live and `/api/health` responds successfully. Full write/read persistence remains to be verified through an account owned by the user.
 - Render Free Postgres expires after 30 days. Choose a durable database plan before storing real accounts or conversations.
 - No production discovery matching, moderation operations, account recovery, or deletion exists.
 - Vercel + Render is the agreed hosting target. Production database will be PostgreSQL on Render unless a later requirement changes the decision.
