@@ -3,7 +3,7 @@
 Premium social network for adults 18+ in Uganda: share your best social stories, follow accounts, search, message, and discover nearby people. **Good company. Your kind of night.**
 
 ## Current status
-The signed-in preview now connects account registration/login, stories, likes, replies, follows, search, and inbox messages to the Render PostgreSQL API. Vercel `/api/health` was verified live through the proxy, and `/api/stories` correctly requires authentication. Preview URLs: [Vercel](https://beer-bros-nine.vercel.app) and [Render API](https://beer-bros-api.onrender.com). Full account-to-post/message persistence still needs a user-created account for end-to-end verification. Discovery swipes remain demo-only; recovery, profile editing, moderation console, and live Socket.IO client are pending. The Render free database is scheduled to expire December 15, 2026 and must not hold real public user data.
+The signed-in preview now connects account registration/login, stories, likes, replies, follows, search, and inbox messages to the Render PostgreSQL API. Live Vercel testing confirmed registration/session restore and that a story, like, and reply remain after reload. A clearly labeled QA account/post/reply remains in the preview database. Preview URLs: [Vercel](https://beer-bros-nine.vercel.app) and [Render API](https://beer-bros-api.onrender.com). Two-account follow and message round-trip still need verification. Discovery swipes remain demo-only; recovery, profile editing, moderation console, and live Socket.IO client are pending. The Render free database is scheduled to expire December 15, 2026 and must not hold real public user data.
 
 ## Technologies
 - React 18, TypeScript, Vite

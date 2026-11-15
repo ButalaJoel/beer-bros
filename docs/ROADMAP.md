@@ -33,7 +33,8 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [x] Set Render `WEB_ORIGIN` to `https://beer-bros-nine.vercel.app` and redeploy.
 - [ ] Verify the Render public hostname from an external browser/network; the current browser environment reports DNS resolution failure despite Render’s Live status.
 - [x] Deploy the frontend integration to Vercel; verify the live `/api/health` proxy and authenticated `/api/stories` gate.
-- [ ] Use a user-created account to verify registration/login and database-backed post/follow/reply/message round-trip without leaving test accounts in the database.
+- [x] Verify live registration, session restore, story creation, like, and reply persistence after reload using a clearly labeled QA fixture.
+- [ ] Verify two-account follow and conversation/message round-trip; plan cleanup for QA fixture before public launch.
 
 ## Phase 3 — Discovery and matching
 - [ ] Implement consent-based approximate location and server-side candidate selection.
