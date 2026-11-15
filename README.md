@@ -3,17 +3,18 @@
 Premium social network for adults 18+ in Uganda: share your best social stories, follow accounts, search, message, and discover nearby people. **Good company. Your kind of night.**
 
 ## Current status
-Initial local demo: responsive Home story feed, local story posting/reactions/replies/follows, Search, demo inbox, and separate discovery with seeded profiles and drinks. Those UI actions reset on reload. A Render API scaffold now includes PostgreSQL-backed account, feed, follow, search, report/block, and conversation routes with authenticated Socket.IO message delivery. The frontend is not connected to the API, and no database or hosted service exists yet.
+Free preview is in progress. The responsive Home story feed, local posting/reactions/replies/follows, Search, demo inbox, and separate discovery are still UI demos whose actions reset on reload. The Render Blueprint `beer-bros-preview` has created the free `beer-bros-api` service and PostgreSQL database; the API build is Live at [beer-bros-api.onrender.com](https://beer-bros-api.onrender.com). Its schema migration runs as part of deploy. The service uses a free instance and free database, so expect cold starts and temporary database retention. The front end is not yet connected to the API. Vercel project import is waiting for account email verification before the front-end deployment can finish.
 
 ## Technologies
 - React 18, TypeScript, Vite
 - Tailwind CSS
 - Lucide React
 - Express, PostgreSQL, and Socket.IO API scaffold
-- Vercel frontend config and Render Blueprint (not connected)
+- Vercel frontend config and Vercel Hobby project import (verification pending)
+- Render free preview Blueprint: `beer-bros-preview`, service `beer-bros-api`, database `beer-bros-db`
 
 ## GitHub
-Private source repository: [ButalaJoel/beer-bros](https://github.com/ButalaJoel/beer-bros). The local `main` branch tracks `origin/main`.
+Private source repository: [ButalaJoel/beer-bros](https://github.com/ButalaJoel/beer-bros). The local `main` branch tracks `origin/main`; Render deploys from `main`.
 
 ## Setup
 Requirements: Node.js 20+ and npm.
@@ -53,7 +54,7 @@ server/
 ```
 
 ## Configuration
-The local story demo needs no configuration. Backend routes require `DATABASE_URL`, `JWT_SECRET`, and `WEB_ORIGIN`. Production configuration separates Vercel frontend settings from Render API/database secrets. Never put database credentials, signing keys, or privileged tokens in `VITE_*` variables. No hosted service is connected. `render.yaml` selects free preview resources; Render’s free Postgres expires after 30 days, so it is unsuitable for real member data or launch.
+The local story demo needs no configuration. Backend routes require `DATABASE_URL`, `JWT_SECRET`, and `WEB_ORIGIN`. Production configuration separates Vercel frontend settings from Render API/database secrets. Never put database credentials, signing keys, or privileged tokens in `VITE_*` variables. `render.yaml` selects free preview resources; Render’s free Postgres expires after 30 days, so it is unsuitable for real member data or launch. Do not use the preview service for public account onboarding or real private messages until the UI/API integration, safety operations, and a durable database are ready.
 
 ## Safety and privacy
 This demo is for adults 18+. Do not use it to encourage excessive drinking. Exact user coordinates are not shown or used in the demo. Read [AGENTS.md](AGENTS.md), [docs/PRD.md](docs/PRD.md), and [docs/ROADMAP.md](docs/ROADMAP.md) before major development.

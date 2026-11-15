@@ -19,12 +19,14 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [ ] Define beta success and safety metrics.
 
 ## Phase 2 — Backend foundation on Render
-- [ ] Create Render web service and PostgreSQL database; configure secrets and environment separation. Blueprint is prepared for a free preview; do not store real member data on the 30-day free database.
+- [x] Create Render free preview web service and PostgreSQL database; configure generated secrets and environment separation. Do not store real member data on the 30-day free database.
 - [x] Implement TypeScript API, initial schema, registration/login, server-side 18+ gate, and profile/story/follow/search endpoints.
 - [x] Add authenticated conversation/message routes and Socket.IO room authorization.
 - [ ] Add account recovery, email verification, and account deletion workflow.
 - [ ] Add photo storage provider and upload validation.
-- [ ] Apply schema to a real database and add migration verification and broader security checks.
+- [x] Apply the initial schema to the preview database during Render build; add independent migration verification and broader security checks.
+- [x] Deploy API service to Render Free from the private GitHub repository; deployment is marked Live. Public health endpoint DNS verification is still pending.
+- [ ] Complete Vercel Hobby project creation after user enters the email verification code; front-end deploy is not live yet.
 
 ## Phase 3 — Discovery and matching
 - [ ] Implement consent-based approximate location and server-side candidate selection.
@@ -42,10 +44,10 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [ ] Operate closed beta, review safety metrics, fix issues, then make a launch decision.
 
 ## Current status and blockers
-- Local frontend and backend builds pass. API smoke checks pass for health, required authentication, the 18+ registration gate, and request-origin protection.
+- Local frontend and backend builds pass. API smoke checks pass for health, required authentication, the 18+ registration gate, and request-origin protection. Render API build is Live at `https://beer-bros-api.onrender.com`; a public health URL check returned DNS resolution failure in this session and needs retry.
 - Private repository exists at `https://github.com/ButalaJoel/beer-bros`; the local `main` branch tracks `origin/main`.
-- Vercel dashboard control failed in this session, so no frontend deployment has been created.
-- Backend code is not connected to the frontend; PostgreSQL schema has not been applied to a provisioned database.
+- Vercel project setup is awaiting the account owner’s one-time email verification; no frontend deployment is live yet.
+- Backend code is not connected to the frontend. Render has created the preview database and the build invokes the initial migration.
 - Render Free Postgres expires after 30 days. Choose a durable database plan before storing real accounts or conversations.
 - No production discovery matching, moderation operations, account recovery, or deletion exists.
 - Vercel + Render is the agreed hosting target. Production database will be PostgreSQL on Render unless a later requirement changes the decision.
