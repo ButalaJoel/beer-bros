@@ -1,6 +1,6 @@
 # Beer BROS Product Requirements
 
-**Status:** Initial product definition, 15 November 2026  
+**Status:** Product requirements and implementation status, 15 November 2026
 **Audience:** Adults aged 18+ in Uganda  
 **Product:** Mobile-first social network and discovery web application
 
@@ -24,7 +24,7 @@ Give adults a welcoming place to share memorable social stories, follow people a
 ## 4. Functional requirements
 ### Home feed and stories
 - Home is the primary signed-in destination and displays a feed of member stories.
-- The local preview now includes seeded stories, a local-only composer, likes, reply affordance, follow controls, and For You/Following filters. These interactions are not backed by accounts or persistent storage.
+- Signed-in preview reads member stories from PostgreSQL and persists story creation, likes, replies, and follows through authenticated API requests. Empty data is an actual empty state; seeded demo stories are not shown as community members.
 - Members can publish text and optionally attach a photo; story length, media rules, visibility, edits, deletion, reactions, and comments must be specified before launch.
 - Feed items identify their author, timestamp, optional topic/drink tag, and reaction/comment counts.
 - Members can react, comment, report content, and open the author profile.
@@ -43,14 +43,14 @@ Give adults a welcoming place to share memorable social stories, follow people a
 ### Messaging
 - Authenticated members can start or continue an authorized one-to-one conversation subject to product privacy rules.
 - Messages are persistent and delivered through a server-authorized API; live delivery uses WebSockets when configured.
-- Initial API code now has session-backed registration/login, stories, follows, search, report/block, conversation history, and authenticated Socket.IO message handling. The frontend is not yet wired to these endpoints; a real database has not been provisioned.
+- The client uses session-backed registration/login, stories, follows, search, conversation history, and persistent message send APIs. Messages use REST persistence; Socket.IO server support exists but the client is not yet using live socket delivery. Account recovery/email verification are not implemented.
 - Support message history, unread state, report/block, and conversation controls. Prevent messaging blocked users; rate-limit new conversations and sends.
 
 ### Discovery
 - Display a large, responsive profile card with accessible profile details and optional drink label.
 - Support pass and interest via explicit buttons, keyboard-accessible controls, and mobile gestures where implemented.
 - Provide feedback for actions, empty state, and undo only if it can be implemented without confusing consent.
-- Demo mode uses seeded data and in-memory state. It must disclose that actions are local and reset on reload.
+- Current discovery mode still uses seeded data and in-memory swipe state; it must remain explicitly labeled demo-only and must not claim actions persist or create real matches.
 - Production matching should rank eligible profiles using server-side approximate location and preferences; do not expose coordinates.
 
 ### Profiles and drink catalogue
@@ -87,13 +87,14 @@ Give adults a welcoming place to share memorable social stories, follow people a
 ## 7. Hosting and system architecture
 - Frontend: React/Vite application deployed on Vercel.
 - Backend: TypeScript API deployed on Render, backed by PostgreSQL; WebSockets support live messaging.
-- After Render assigns the API URL, route `/api/*` through the Vercel app origin or otherwise configure credentialed cross-origin requests and cookie behavior.
+- Route `/api/*` through the Vercel app origin using the Vercel rewrite before the SPA fallback; set Render `WEB_ORIGIN` to the exact Vercel origin.
 - Local development supports separate client and server processes with documented environment examples.
 - Keep authorization, validation, feed ranking, matching, search filters, and privacy enforcement server-side.
 
-## 8. Out of scope for initial local demo
-- Real authentication, location queries, remote feed, media upload, persistent chat, notifications, payments, and moderation backend.
-- Any claim that demo actions are shared, saved remotely, or constitute a real match.
+## 8. Current implementation gaps
+- Persistent discovery actions/matching, location queries, media upload, push notifications, and live client-side socket delivery.
+- Account recovery, email verification, account deletion, editable profiles, and an in-product moderation/admin console.
+- The database remains a free preview instance and must move to a durable plan before real public use.
 
 ## 9. Release gates
 - Legal/privacy review for Uganda and target markets.

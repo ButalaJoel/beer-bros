@@ -79,10 +79,12 @@ router.get('/stories', requireAuth, async (req, res, next) => {
   try {
     const followingOnly = req.query.feed === 'following'
     const result = await pool.query(
-      `SELECT s.id, s.body, s.topic_tags, s.created_at, p.handle, p.display_name, p.avatar_url, p.broad_area,
+      `SELECT s.id, s.author_id, s.body, s.topic_tags, s.created_at, p.handle, p.display_name, p.avatar_url, p.broad_area,
         (SELECT count(*)::int FROM story_likes l WHERE l.story_id=s.id) AS like_count,
         (SELECT count(*)::int FROM story_comments c WHERE c.story_id=s.id AND c.deleted_at IS NULL) AS reply_count,
-        EXISTS (SELECT 1 FROM story_likes mine WHERE mine.story_id=s.id AND mine.user_id=$1) AS liked_by_me
+        EXISTS (SELECT 1 FROM story_likes mine WHERE mine.story_id=s.id AND mine.user_id=$1) AS liked_by_me,
+        EXISTS (SELECT 1 FROM follows mine WHERE mine.follower_id=$1 AND mine.followed_id=s.author_id) AS followed_by_me,
+        (s.author_id=$1) AS own_story
        FROM stories s JOIN profiles p ON p.user_id=s.author_id
        WHERE s.deleted_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=s.author_id) OR (b.blocker_id=s.author_id AND b.blocked_id=$1))
@@ -191,7 +193,12 @@ router.get('/search', requireAuth, async (req, res, next) => {
          ORDER BY p.display_name LIMIT 20`, [req.user!.id, pattern],
       ),
       pool.query(
-        `SELECT s.id, s.body, s.topic_tags, s.created_at, p.handle, p.display_name, p.avatar_url
+        `SELECT s.id, s.author_id, s.body, s.topic_tags, s.created_at, p.handle, p.display_name, p.avatar_url, p.broad_area,
+           (SELECT count(*)::int FROM story_likes l WHERE l.story_id=s.id) AS like_count,
+           (SELECT count(*)::int FROM story_comments c WHERE c.story_id=s.id AND c.deleted_at IS NULL) AS reply_count,
+           EXISTS (SELECT 1 FROM story_likes mine WHERE mine.story_id=s.id AND mine.user_id=$1) AS liked_by_me,
+           EXISTS (SELECT 1 FROM follows mine WHERE mine.follower_id=$1 AND mine.followed_id=s.author_id) AS followed_by_me,
+           (s.author_id=$1) AS own_story
          FROM stories s JOIN profiles p ON p.user_id=s.author_id
          WHERE s.deleted_at IS NULL AND (s.body ILIKE $2 OR EXISTS (SELECT 1 FROM unnest(s.topic_tags) tag WHERE tag ILIKE $2))
            AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=s.author_id) OR (b.blocker_id=s.author_id AND b.blocked_id=$1))

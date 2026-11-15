@@ -3,7 +3,7 @@
 Premium social network for adults 18+ in Uganda: share your best social stories, follow accounts, search, message, and discover nearby people. **Good company. Your kind of night.**
 
 ## Current status
-Free preview is deployed. The responsive Home story feed, local posting/reactions/replies/follows, Search, demo inbox, and separate discovery remain UI demos whose actions reset on reload. The front end is live at [beer-bros-nine.vercel.app](https://beer-bros-nine.vercel.app). Render Blueprint `beer-bros-preview` created the free `beer-bros-api` service and PostgreSQL database. Render marks the API Live; its deployment logs confirm the schema migration succeeded and the health check passed. The configured `WEB_ORIGIN` is the Vercel preview URL. The front end is not yet connected to the API, so accounts and messages are still demo-only. The Render hostname did not resolve from the browser environment during a direct external check, despite Render reporting the service Live.
+The signed-in preview now connects account registration/login, stories, likes, replies, follows, search, and inbox messages to the Render PostgreSQL API. Vercel routes `/api/*` to Render. Preview URLs: [Vercel](https://beer-bros-nine.vercel.app) and [Render API](https://beer-bros-api.onrender.com). Render reports the API Live and database migration complete. Deploy this commit to verify the Vercel proxy and browser session end to end. Discovery swipes remain demo-only; recovery, profile editing, moderation console, and live Socket.IO client are pending. The Render free database is temporary and must not hold real public user data.
 
 ## Technologies
 - React 18, TypeScript, Vite
@@ -25,7 +25,7 @@ npm run dev
 npm run server:dev
 ```
 
-Run the frontend and API in separate terminals. Open the Vite URL. Copy `.env.example` to `.env` and configure a local PostgreSQL database before using database-backed routes. Placeholder values are for local setup only.
+Run the frontend and API in separate terminals. Copy `.env.example` to `.env` and configure a local PostgreSQL database and a 32+ character `JWT_SECRET`. For local Vite development, set `VITE_API_URL` to the API origin and configure `WEB_ORIGIN` to the Vite origin. Vercel uses a same-origin `/api/*` rewrite to Render.
 
 ## Scripts
 - `npm run dev` — start Vite development server
@@ -54,7 +54,7 @@ server/
 ```
 
 ## Configuration
-The local story demo needs no configuration. Backend routes require `DATABASE_URL`, `JWT_SECRET`, and `WEB_ORIGIN`. Production configuration separates Vercel frontend settings from Render API/database secrets. Never put database credentials, signing keys, or privileged tokens in `VITE_*` variables. `render.yaml` selects free preview resources; Render’s free Postgres expires after 30 days, so it is unsuitable for real member data or launch. Do not use the preview service for public account onboarding or real private messages until the UI/API integration, safety operations, and a durable database are ready.
+Backend routes require `DATABASE_URL`, `JWT_SECRET`, and exact `WEB_ORIGIN`. Keep these in Render's environment, never in Vercel client variables. To administer PostgreSQL, sign in to Render, open `beer-bros-db`, choose **Connect**, and use its PSQL command/URL with `psql`, pgAdmin, or another trusted SQL client. Never paste the password or full connection URL into source control or chat. There is no Beer BROS admin login or in-product admin console yet; Render workspace access controls database administration. The free preview database expires after 30 days and must be replaced with a durable plan before inviting public users.
 
 ## Safety and privacy
 This demo is for adults 18+. Do not use it to encourage excessive drinking. Exact user coordinates are not shown or used in the demo. Read [AGENTS.md](AGENTS.md), [docs/PRD.md](docs/PRD.md), and [docs/ROADMAP.md](docs/ROADMAP.md) before major development.

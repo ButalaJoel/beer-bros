@@ -8,7 +8,7 @@ Beer BROS is a premium, mobile-first social network for adults aged 18+ in Ugand
 - Responsible socialising: promote moderation, consent, public first meetings, and report/block controls. No feature should reward excessive consumption.
 - Protect location: use approximate distance/area only. Never display, store in client state, log, or expose another user's exact coordinates. Any future proximity matching must happen server-side using coarse geohash/distance bands and explicit location consent.
 - Privacy and safety controls must be accessible from profile and match surfaces. Reporting/blocking and moderation are launch requirements for a real public release.
-- The local demo is not a production service. Do not imply that demo likes or profiles are persisted or visible to other people.
+- Do not show seeded demonstration stories as real community content. Signed-out visitors see account access; authenticated stories and social actions use PostgreSQL through the API.
 - Never copy Tinder branding, assets, or proprietary code. Beer BROS has its own identity and visual language.
 
 ## Design direction
@@ -22,7 +22,7 @@ Beer BROS is a premium, mobile-first social network for adults aged 18+ in Ugand
 - Backend: Node.js + TypeScript API service on Render, with PostgreSQL for accounts, profiles, follows, stories, reactions, conversations, moderation records, and discovery actions. Use WebSockets (Socket.IO or equivalent) for authorized live chat after the REST/API foundation is secure.
 - Authentication: server-verified email/password or chosen OAuth provider, secure session handling, age eligibility gate, account recovery, and rate limiting. Never trust client-provided identity or authorization.
 - Keep backend services under `server/` with route, service, repository, middleware, schema/migration, and test layers. Client feature modules stay under `src/features/`; typed API clients under `src/lib/api/`.
-- Keep integrations behind typed boundaries and environment variables. Local demo must remain usable without production credentials while being clearly distinguished from real account and social actions.
+- Keep integrations behind typed boundaries and environment variables. The signed-in social feed requires the API; never silently fall back to fabricated remote data. Discovery remains explicitly labeled demo-only until its persistent API is implemented.
 - Do not put secrets in the client bundle. Privileged keys and database credentials belong only in Render environment variables. Vercel receives only explicitly public frontend configuration.
 - The current backend uses a Render-hosted Node API and PostgreSQL. Do not add a Supabase dependency unless the architecture is explicitly changed and documented.
 - Use strict TypeScript, semantic HTML, accessible labels/focus states, responsive layouts, and reduced-motion support.
@@ -36,9 +36,12 @@ Beer BROS is a premium, mobile-first social network for adults aged 18+ in Ugand
 5. Before handoff, summarize completed, pending, blocked, validation, and configuration status in the README/roadmap.
 
 ## Current implementation decisions
-- Existing initial release is a client-side local discovery demo with in-memory swipe state and seeded profiles/catalogue. Refresh resets demo decisions.
-- The product direction is now a broader social network with home feed, stories, follows, search, messaging, and a complementary discovery feature.
-- A TypeScript Express/PostgreSQL/Socket.IO API scaffold now exists under `server/`, including account, feed, follow, search, report/block, and conversation routes. It builds and has a limited API smoke check. The frontend is not yet wired to this API; no real database has been provisioned, and the backend must not be described as production-ready.
-- Hosting target: Vercel frontend and Render API/PostgreSQL. The Vercel preview is live at `https://beer-bros-nine.vercel.app`; Render free preview Blueprint, API service, and temporary database exist and deploy from `main`. The frontend has not been connected to the API and the preview is not production-ready.
+- Beer BROS is a broader social network with a member story feed, follows, search, persistent direct messages, and a distinct discovery feature.
+- The React client accesses `/api/*` through a same-origin Vercel rewrite to the Render API. Keep this rewrite before the SPA fallback. It avoids browser cross-site cookie restrictions and lets Render accept the Vercel origin.
+- Registration/login use the API's signed HttpOnly session cookie and PostgreSQL. The server validates age 18+, hashes passwords, and validates writes. Never put database credentials, JWT secrets, or privileged keys in Vercel client variables.
+- Authenticated Home and Search use PostgreSQL. Stories, likes, replies, follows, and conversations/messages persist through the API. Empty member data is a genuine empty state, not seeded demo content.
+- Discovery cards/swipes remain a local demonstration; do not describe them as persisted matches. Persistent discovery/matching is a separate milestone.
+- Hosting: Vercel `https://beer-bros-nine.vercel.app`; Render API `https://beer-bros-api.onrender.com`; Render Postgres `beer-bros-db`. Deploy from `main`. The Render free preview database is temporary and not suitable for production member data.
+- Administration is through Render workspace/database access, not a Beer BROS admin login. No in-product moderation/admin console exists yet. Use Render's database Connect details with `psql` or a trusted SQL client; never disclose credentials in chat or commit them.
 - Product name is “Beer BROS”; working tagline is “Good company. Your kind of night.”
 - Initial discovery is a single-profile card with pass/interest controls; a mutual match is simulated only in the seeded demo when applicable.
