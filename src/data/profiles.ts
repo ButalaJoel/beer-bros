@@ -1,0 +1,9 @@
+import type { Profile } from '../types'
+
+export const profiles: Profile[] = [
+  { id: 'maya', name: 'Maya', age: 27, area: 'Kololo', distance: 'about 2 km away', bio: 'Slow Sundays, live jazz and finding the best spot for a good conversation.', interests: ['Live music', 'Brunch', 'Travel'], drinkId: 'club', image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1000&q=85', online: true, verified: true },
+  { id: 'josh', name: 'Josh', age: 30, area: 'Ntinda', distance: 'about 4 km away', bio: 'Here for good stories, good food and the occasional spontaneous road trip.', interests: ['Football', 'Food', 'Road trips'], drinkId: 'nile', image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=1000&q=85', verified: true },
+  { id: 'aisha', name: 'Aisha', age: 25, area: 'Bugolobi', distance: 'about 3 km away', bio: 'Creative by day, playlist curator by night. Let’s find a rooftop with a view.', interests: ['Art', 'Afrobeats', 'Design'], drinkId: 'bell', image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=1000&q=85', online: true },
+  { id: 'daniel', name: 'Daniel', age: 29, area: 'Muyenga', distance: 'about 5 km away', bio: 'Big fan of mountain air, small plates and not taking life too seriously.', interests: ['Hiking', 'Cooking', 'Comedy'], drinkId: 'guinness', image: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=1000&q=85', verified: true },
+  { id: 'nina', name: 'Nina', age: 28, area: 'Bukoto', distance: 'about 3 km away', bio: 'Bookshop regular. Amateur salsa dancer. Always up for a new favourite place.', interests: ['Books', 'Salsa', 'Coffee'], drinkId: 'heineken', image: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1000&q=85', online: true },
+]
