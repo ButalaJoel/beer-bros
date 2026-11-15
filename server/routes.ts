@@ -73,7 +73,7 @@ router.post('/auth/login', async (req, res, next) => {
 })
 
 router.post('/auth/logout', (_req, res) => { res.clearCookie(sessionCookie.name, { ...sessionCookie.options, maxAge: undefined }); res.status(204).end() })
-router.get('/auth/me', requireAuth, (req, res) => res.json({ user: req.user }))
+router.get('/auth/me', requireAuth, (req, res) => res.json({ user: { id: req.user!.id, email: req.user!.email, handle: req.user!.handle, displayName: req.user!.display_name } }))
 
 router.get('/stories', requireAuth, async (req, res, next) => {
   try {
