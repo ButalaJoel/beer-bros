@@ -43,14 +43,14 @@ Give adults a welcoming place to share memorable social stories, follow people a
 ### Messaging
 - Authenticated members can start or continue an authorized one-to-one conversation subject to product privacy rules.
 - Messages are persistent and delivered through a server-authorized API; live delivery uses WebSockets when configured.
-- The client uses session-backed registration/login, stories, follows, search, conversation history, and persistent message send APIs. Messages use REST persistence; Socket.IO server support exists but the client is not yet using live socket delivery. Account recovery/email verification are not implemented.
+- The client uses session-backed registration/login, stories, follows, search, conversation history, and persistent message APIs. Discovery opt-in is explicit; pass/interest records persist; the recipient sees pending interest; reciprocal interest creates a match and private conversation. Messages are available only to mutual matches and the inbox polls for new messages. Account recovery/email verification are not implemented.
 - Support message history, unread state, report/block, and conversation controls. Prevent messaging blocked users; rate-limit new conversations and sends.
 
 ### Discovery
 - Display a large, responsive profile card with accessible profile details and optional drink label.
 - Support pass and interest via explicit buttons, keyboard-accessible controls, and mobile gestures where implemented.
 - Provide feedback for actions, empty state, and undo only if it can be implemented without confusing consent.
-- Current discovery mode still uses seeded data and in-memory swipe state; it must remain explicitly labeled demo-only and must not claim actions persist or create real matches.
+- Discovery displays only opted-in adult member accounts. Right swipe or the Interested button persists an interest; left swipe or Pass persists a pass. Members can see incoming interest, choose to reciprocate, review mutual matches, and open a private conversation. Swipe gestures have button alternatives. Only broad area is shown; exact coordinates are not requested or stored.
 - Production matching should rank eligible profiles using server-side approximate location and preferences; do not expose coordinates.
 
 ### Profiles and drink catalogue
@@ -92,7 +92,7 @@ Give adults a welcoming place to share memorable social stories, follow people a
 - Keep authorization, validation, feed ranking, matching, search filters, and privacy enforcement server-side.
 
 ## 8. Current implementation gaps
-- Persistent discovery actions/matching, location queries, media upload, push notifications, and live client-side socket delivery.
+- Consent-based discovery actions/matching and match-gated message UI are implemented; two-account deployed round-trip verification remains pending. Location queries, media upload, push notifications, and client Socket.IO delivery remain out of scope for this preview.
 - Account recovery, email verification, account deletion, editable profiles, and an in-product moderation/admin console.
 - The database remains a free preview instance and must move to a durable plan before real public use.
 

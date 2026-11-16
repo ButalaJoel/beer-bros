@@ -28,7 +28,7 @@ export default function App() {
     <main>
       {ageNoticeVisible && <div className="demo-banner"><span className="demo-banner-dot" /><span><strong>18+ MEMBER PREVIEW</strong> — Your stories and messages are saved to your account.</span><button aria-label="Dismiss notice" onClick={() => setAgeNoticeVisible(false)}>×</button></div>}
       <div className={`social-layout ${active === 'Discover' ? 'discover-page' : ''}`}>
-        {active === 'Discover' ? <Discovery /> : <><Feed mode={active} query={query} onStartConversation={async (otherUserId) => { await api('/conversations', { method: 'POST', body: JSON.stringify({ otherUserId }) }); setActive('Messages') }} /><FeedRail /></>}
+        {active === 'Discover' ? <Discovery onOpenConversation={async (otherUserId) => { await api('/conversations', { method: 'POST', body: JSON.stringify({ otherUserId }) }); setActive('Messages') }} /> : <><Feed mode={active} query={query} currentUserId={user.id} /><FeedRail /></>}
       </div>
     </main>
     <footer className="page-footer" id="community-guidelines"><span>© 2026 Beer BROS</span><span className="footer-note"><ShieldCheck size={14} /> Adults 18+ · Drink responsibly · Respect boundaries</span><a href="#community-guidelines">Safety & privacy</a></footer>

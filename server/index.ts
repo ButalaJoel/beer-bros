@@ -23,7 +23,7 @@ const corsOptions: cors.CorsOptions = {
     return callback(null, false)
   },
   credentials: true,
-  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   maxAge: 600,
 }
@@ -73,6 +73,7 @@ io.on('connection', (socket) => {
     try {
       const access = await pool.query(
         `SELECT 1 FROM conversations c WHERE c.id=$1 AND (c.participant_a=$2 OR c.participant_b=$2)
+         AND EXISTS (SELECT 1 FROM matches m WHERE m.user_a=LEAST(c.participant_a,c.participant_b) AND m.user_b=GREATEST(c.participant_a,c.participant_b))
          AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=CASE WHEN c.participant_a=$2 THEN c.participant_b ELSE c.participant_a END)
            OR (b.blocker_id=CASE WHEN c.participant_a=$2 THEN c.participant_b ELSE c.participant_a END AND b.blocked_id=$2))`, [conversationId, userId],
       )
@@ -96,6 +97,7 @@ io.on('connection', (socket) => {
         `INSERT INTO messages (conversation_id, sender_id, body)
          SELECT c.id, $2, $3 FROM conversations c
          WHERE c.id=$1 AND (c.participant_a=$2 OR c.participant_b=$2)
+           AND EXISTS (SELECT 1 FROM matches m WHERE m.user_a=LEAST(c.participant_a,c.participant_b) AND m.user_b=GREATEST(c.participant_a,c.participant_b))
            AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=CASE WHEN c.participant_a=$2 THEN c.participant_b ELSE c.participant_a END)
              OR (b.blocker_id=CASE WHEN c.participant_a=$2 THEN c.participant_b ELSE c.participant_a END AND b.blocked_id=$2))
          RETURNING id, conversation_id, sender_id, body, created_at`, [conversationId, userId, body],

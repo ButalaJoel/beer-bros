@@ -15,9 +15,16 @@ CREATE TABLE IF NOT EXISTS profiles (
   avatar_url text,
   broad_area text,
   current_drink_id text,
+  interests text[] NOT NULL DEFAULT '{}',
+  social_intent text NOT NULL DEFAULT 'open_to_meeting' CHECK (social_intent IN ('open_to_meeting', 'friends', 'community')),
+  discovery_enabled boolean NOT NULL DEFAULT false,
   updated_at timestamptz NOT NULL DEFAULT now(),
   CHECK (handle = lower(handle))
 );
+
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS interests text[] NOT NULL DEFAULT '{}';
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS social_intent text NOT NULL DEFAULT 'open_to_meeting';
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS discovery_enabled boolean NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS follows (
   follower_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -61,6 +68,24 @@ CREATE TABLE IF NOT EXISTS blocks (
   CHECK (blocker_id <> blocked_id)
 );
 
+CREATE TABLE IF NOT EXISTS discovery_actions (
+  actor_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  target_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  action text NOT NULL CHECK (action IN ('pass', 'interested')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (actor_id, target_id),
+  CHECK (actor_id <> target_id)
+);
+
+CREATE TABLE IF NOT EXISTS matches (
+  user_a uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_b uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_a, user_b),
+  CHECK (user_a < user_b)
+);
+
 CREATE TABLE IF NOT EXISTS reports (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   reporter_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -97,3 +122,6 @@ CREATE INDEX IF NOT EXISTS stories_author_idx ON stories (author_id, created_at 
 CREATE INDEX IF NOT EXISTS follows_followed_idx ON follows (followed_id, follower_id);
 CREATE INDEX IF NOT EXISTS comments_story_idx ON story_comments (story_id, created_at ASC) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS messages_conversation_idx ON messages (conversation_id, created_at ASC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS discovery_incoming_idx ON discovery_actions (target_id, created_at DESC) WHERE action='interested';
+CREATE INDEX IF NOT EXISTS matches_recent_idx ON matches (user_a, created_at DESC);
+CREATE INDEX IF NOT EXISTS matches_recent_b_idx ON matches (user_b, created_at DESC);

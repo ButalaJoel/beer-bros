@@ -10,13 +10,17 @@ const registerBody = z.object({
   password: z.string().min(12).max(128),
   handle: z.string().min(3).max(24).regex(/^[a-zA-Z0-9_]+$/),
   displayName: z.string().trim().min(1).max(60),
+  bio: z.string().trim().max(300).default(''),
+  broadArea: z.string().trim().max(60).default(''),
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   acceptedResponsibleUse: z.literal(true),
+  discoveryEnabled: z.boolean().default(false),
 })
 const loginBody = z.object({ email: z.string().email().max(254), password: z.string().min(1).max(128) })
 const storyBody = z.object({ body: z.string().trim().min(1).max(500), topicTags: z.array(z.string().trim().min(1).max(32)).max(5).optional() })
 const commentBody = z.object({ body: z.string().trim().min(1).max(500) })
 const messageBody = z.object({ body: z.string().trim().min(1).max(2000) })
+const discoveryActionBody = z.object({ targetUserId: z.string().uuid(), action: z.enum(['pass', 'interested']) })
 
 function isAdult(dateOfBirth: string) {
   const date = new Date(`${dateOfBirth}T00:00:00.000Z`)
@@ -34,7 +38,7 @@ router.post('/auth/register', async (req, res, next) => {
   try {
     const parsed = registerBody.safeParse(req.body)
     if (!parsed.success) return res.status(400).json({ error: 'Check the account details and try again.' })
-    const { email, password, handle, displayName, dateOfBirth } = parsed.data
+    const { email, password, handle, displayName, bio, broadArea, dateOfBirth, discoveryEnabled } = parsed.data
     if (!isAdult(dateOfBirth)) return res.status(403).json({ error: 'Beer BROS is only available to adults aged 18 and over.' })
     const passwordHash = await bcrypt.hash(password, 12)
     const client = await pool.connect()
@@ -45,7 +49,7 @@ router.post('/auth/register', async (req, res, next) => {
         [email.toLowerCase(), passwordHash, dateOfBirth],
       )
       const user = created.rows[0]
-      await client.query('INSERT INTO profiles (user_id, handle, display_name) VALUES ($1, $2, $3)', [user.id, handle.toLowerCase(), displayName.trim()])
+      await client.query('INSERT INTO profiles (user_id, handle, display_name, bio, broad_area, discovery_enabled) VALUES ($1, $2, $3, $4, $5, $6)', [user.id, handle.toLowerCase(), displayName.trim(), bio, broadArea, discoveryEnabled])
       await client.query('COMMIT')
       res.cookie(sessionCookie.name, issueSession(user.id), sessionCookie.options)
       return res.status(201).json({ user: { id: user.id, email: user.email, handle: handle.toLowerCase(), displayName: displayName.trim() } })
@@ -209,6 +213,117 @@ router.get('/search', requireAuth, async (req, res, next) => {
   } catch (error) { next(error) }
 })
 
+router.get('/profile/discovery', requireAuth, async (req, res, next) => {
+  try {
+    const result = await pool.query<{ discovery_enabled: boolean }>('SELECT discovery_enabled FROM profiles WHERE user_id=$1', [req.user!.id])
+    return res.json({ enabled: result.rows[0]?.discovery_enabled ?? false })
+  } catch (error) { next(error) }
+})
+
+router.put('/profile/discovery', requireAuth, async (req, res, next) => {
+  try {
+    const parsed = z.object({ enabled: z.boolean() }).safeParse(req.body)
+    if (!parsed.success) return res.status(400).json({ error: 'Choose whether your profile can appear in Discovery.' })
+    await pool.query('UPDATE profiles SET discovery_enabled=$2, updated_at=now() WHERE user_id=$1', [req.user!.id, parsed.data.enabled])
+    return res.json({ enabled: parsed.data.enabled })
+  } catch (error) { next(error) }
+})
+
+router.get('/discovery/candidates', requireAuth, async (req, res, next) => {
+  try {
+    const enabled = await pool.query<{ discovery_enabled: boolean }>('SELECT discovery_enabled FROM profiles WHERE user_id=$1', [req.user!.id])
+    if (!enabled.rows[0]?.discovery_enabled) return res.json({ enabled: false, candidates: [] })
+    const result = await pool.query(
+      `SELECT u.id, p.handle, p.display_name, p.bio, p.avatar_url, p.broad_area, p.current_drink_id,
+         p.interests, extract(year from age(current_date, u.date_of_birth))::int AS age
+       FROM users u JOIN profiles p ON p.user_id=u.id
+       WHERE u.deleted_at IS NULL AND p.user_id<>$1 AND p.discovery_enabled=true
+         AND NOT EXISTS (SELECT 1 FROM discovery_actions a WHERE a.actor_id=$1 AND a.target_id=u.id)
+         AND NOT EXISTS (SELECT 1 FROM matches m WHERE (m.user_a=$1 AND m.user_b=u.id) OR (m.user_a=u.id AND m.user_b=$1))
+         AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=$1))
+       ORDER BY u.created_at DESC LIMIT 30`, [req.user!.id],
+    )
+    return res.json({ enabled: true, candidates: result.rows })
+  } catch (error) { next(error) }
+})
+
+router.get('/discovery/incoming', requireAuth, async (req, res, next) => {
+  try {
+    const result = await pool.query(
+      `SELECT u.id, p.handle, p.display_name, p.bio, p.avatar_url, p.broad_area, p.current_drink_id,
+         p.interests, extract(year from age(current_date, u.date_of_birth))::int AS age, a.created_at
+       FROM discovery_actions a JOIN users u ON u.id=a.actor_id JOIN profiles p ON p.user_id=u.id
+       WHERE a.target_id=$1 AND a.action='interested' AND u.deleted_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM matches m WHERE (m.user_a=$1 AND m.user_b=u.id) OR (m.user_a=u.id AND m.user_b=$1))
+         AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=$1))
+       ORDER BY a.created_at DESC LIMIT 50`, [req.user!.id],
+    )
+    return res.json({ interests: result.rows })
+  } catch (error) { next(error) }
+})
+
+router.get('/discovery/matches', requireAuth, async (req, res, next) => {
+  try {
+    const result = await pool.query(
+      `SELECT m.created_at, other.id, p.handle, p.display_name, p.avatar_url, p.broad_area,
+         c.id AS conversation_id
+       FROM matches m
+       JOIN users other ON other.id=CASE WHEN m.user_a=$1 THEN m.user_b ELSE m.user_a END AND other.deleted_at IS NULL
+       JOIN profiles p ON p.user_id=other.id
+       JOIN conversations c ON c.participant_a=LEAST(m.user_a,m.user_b) AND c.participant_b=GREATEST(m.user_a,m.user_b)
+       WHERE (m.user_a=$1 OR m.user_b=$1)
+         AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=other.id) OR (b.blocker_id=other.id AND b.blocked_id=$1))
+       ORDER BY m.created_at DESC LIMIT 50`, [req.user!.id],
+    )
+    return res.json({ matches: result.rows })
+  } catch (error) { next(error) }
+})
+
+router.post('/discovery/actions', requireAuth, async (req, res, next) => {
+  const parsed = discoveryActionBody.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'Choose a valid profile and pass or interest action.' })
+  const { targetUserId, action } = parsed.data
+  if (targetUserId === req.user!.id) return res.status(400).json({ error: 'You cannot react to your own profile.' })
+  let client: Awaited<ReturnType<typeof pool.connect>> | undefined
+  try {
+    client = await pool.connect()
+    await client.query('BEGIN')
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended(LEAST($1::text,$2::text)||':'||GREATEST($1::text,$2::text), 0))", [req.user!.id, targetUserId])
+    const eligibility = await client.query(
+      `SELECT 1 FROM profiles target JOIN users u ON u.id=target.user_id
+       JOIN profiles mine ON mine.user_id=$1
+       WHERE target.user_id=$2 AND target.discovery_enabled=true AND mine.discovery_enabled=true AND u.deleted_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=$2) OR (b.blocker_id=$2 AND b.blocked_id=$1))`, [req.user!.id, targetUserId],
+    )
+    if (!eligibility.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'That profile is unavailable. Both members must have Discovery enabled.' }) }
+    const existingMatch = await client.query('SELECT 1 FROM matches WHERE user_a=LEAST($1,$2) AND user_b=GREATEST($1,$2)', [req.user!.id, targetUserId])
+    if (existingMatch.rowCount) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'You are already matched.' }) }
+    await client.query(
+      `INSERT INTO discovery_actions (actor_id,target_id,action) VALUES ($1,$2,$3)
+       ON CONFLICT (actor_id,target_id) DO UPDATE SET action=EXCLUDED.action, updated_at=now()`, [req.user!.id, targetUserId, action],
+    )
+    let matched = false
+    let conversationId: string | undefined
+    if (action === 'interested') {
+      const reciprocal = await client.query('SELECT 1 FROM discovery_actions WHERE actor_id=$1 AND target_id=$2 AND action=\'interested\'', [targetUserId, req.user!.id])
+      if (reciprocal.rowCount) {
+        await client.query('INSERT INTO matches (user_a,user_b) VALUES (LEAST($1,$2),GREATEST($1,$2)) ON CONFLICT DO NOTHING', [req.user!.id, targetUserId])
+        const conversation = await client.query<{ id: string }>(
+          `INSERT INTO conversations (participant_a,participant_b) VALUES (LEAST($1,$2),GREATEST($1,$2))
+           ON CONFLICT (participant_a,participant_b) DO UPDATE SET participant_a=EXCLUDED.participant_a RETURNING id`, [req.user!.id, targetUserId],
+        )
+        matched = true
+        conversationId = conversation.rows[0].id
+      }
+    }
+    await client.query('COMMIT')
+    return res.json({ action, matched, conversationId })
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => undefined)
+    return next(error)
+  } finally { client?.release() }
+})
+
 router.post('/users/:userId/block', requireAuth, async (req, res, next) => {
   try {
     if (req.params.userId === req.user!.id) return res.status(400).json({ error: 'You cannot block your own account.' })
@@ -250,6 +365,7 @@ router.get('/conversations', requireAuth, async (req, res, next) => {
        JOIN users other ON other.id=CASE WHEN c.participant_a=$1 THEN c.participant_b ELSE c.participant_a END AND other.deleted_at IS NULL
        JOIN profiles p ON p.user_id=other.id
        WHERE (c.participant_a=$1 OR c.participant_b=$1)
+         AND EXISTS (SELECT 1 FROM matches m WHERE m.user_a=LEAST(c.participant_a,c.participant_b) AND m.user_b=GREATEST(c.participant_a,c.participant_b))
          AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=other.id) OR (b.blocker_id=other.id AND b.blocked_id=$1))
        ORDER BY last_message_at DESC NULLS LAST, c.created_at DESC LIMIT 50`, [req.user!.id],
     )
@@ -262,6 +378,8 @@ router.post('/conversations', requireAuth, async (req, res, next) => {
     const parsed = z.object({ otherUserId: z.string().uuid() }).safeParse(req.body)
     if (!parsed.success || parsed.data.otherUserId === req.user!.id) return res.status(400).json({ error: 'Choose another account to message.' })
     const [a, b] = [req.user!.id, parsed.data.otherUserId].sort()
+    const match = await pool.query('SELECT 1 FROM matches WHERE user_a=$1 AND user_b=$2', [a, b])
+    if (!match.rowCount) return res.status(403).json({ error: 'You can message after you both express interest in Discovery.' })
     const result = await pool.query<{ id: string }>(
       `INSERT INTO conversations (participant_a, participant_b)
        SELECT $1,$2 WHERE EXISTS (SELECT 1 FROM users WHERE id=$2 AND deleted_at IS NULL)
@@ -278,6 +396,7 @@ router.get('/conversations/:conversationId/messages', requireAuth, async (req, r
   try {
     const allowed = await pool.query(
       `SELECT 1 FROM conversations c WHERE c.id=$1 AND (c.participant_a=$2 OR c.participant_b=$2)
+       AND EXISTS (SELECT 1 FROM matches m WHERE m.user_a=LEAST(c.participant_a,c.participant_b) AND m.user_b=GREATEST(c.participant_a,c.participant_b))
        AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=CASE WHEN c.participant_a=$2 THEN c.participant_b ELSE c.participant_a END)
          OR (b.blocker_id=CASE WHEN c.participant_a=$2 THEN c.participant_b ELSE c.participant_a END AND b.blocked_id=$2))`, [req.params.conversationId, req.user!.id],
     )
@@ -298,6 +417,7 @@ router.post('/conversations/:conversationId/messages', requireAuth, async (req, 
       `INSERT INTO messages (conversation_id, sender_id, body)
        SELECT c.id, $2, $3 FROM conversations c
        WHERE c.id=$1 AND (c.participant_a=$2 OR c.participant_b=$2)
+         AND EXISTS (SELECT 1 FROM matches m WHERE m.user_a=LEAST(c.participant_a,c.participant_b) AND m.user_b=GREATEST(c.participant_a,c.participant_b))
          AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=CASE WHEN c.participant_a=$2 THEN c.participant_b ELSE c.participant_a END)
            OR (b.blocker_id=CASE WHEN c.participant_a=$2 THEN c.participant_b ELSE c.participant_a END AND b.blocked_id=$2))
        RETURNING id, conversation_id, sender_id, body, created_at`, [req.params.conversationId, req.user!.id, parsed.data.body],

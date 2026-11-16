@@ -16,7 +16,7 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [ ] Configure brand assets and real profile photography.
 
 ## Phase 1 — Product validation and UX
-- [x] Make Home story feed the primary experience; retain Discovery as a separate feature (demo-only interactions).
+- [x] Make Home story feed the primary experience; retain Discovery as a separate, member-backed feature.
 - [ ] Define story composition, follow states, search results, messaging privacy, and notification behavior.
 - [ ] Validate onboarding, profile fields, discovery preferences, safety language, and Uganda localization with target users.
 - [ ] Finalize visual identity, content tone, accessibility baseline, and privacy/terms copy.
@@ -26,6 +26,8 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [x] Create Render free preview web service and PostgreSQL database; configure generated secrets and environment separation. Do not store real member data on the 30-day free database.
 - [x] Implement TypeScript API, initial schema, registration/login, server-side 18+ gate, and profile/story/follow/search endpoints.
 - [x] Add authenticated conversation/message routes and Socket.IO room authorization.
+- [x] Add match-gated conversations and persistent message history/send APIs.
+- [x] Add same-origin API client inbox polling for new conversations and messages.
 - [ ] Add account recovery, email verification, and account deletion workflow.
 - [ ] Add photo storage provider and upload validation.
 - [x] Apply the initial schema to the preview database during Render build; add independent migration verification and broader security checks.
@@ -37,12 +39,15 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [ ] Verify two-account follow and conversation/message round-trip; plan cleanup for QA fixture before public launch.
 
 ## Phase 3 — Discovery and matching
-- [ ] Implement consent-based approximate location and server-side candidate selection.
-- [ ] Implement persistent pass/interest records and mutual match creation.
-- [ ] Add paging, empty/error/loading states, and abuse/rate protections.
+- [x] Add explicit Discovery opt-in and server-side candidate selection; share broad area only and never request exact coordinates.
+- [x] Persist pass/interest actions and create mutual matches plus conversations on reciprocal interest.
+- [x] Add incoming Likes you and Matches views, empty/error/loading feedback, block exclusions, and swipe buttons.
+- [ ] Add candidate pagination and further abuse/rate protections.
 
 ## Phase 4 — Messaging and safety operations
-- [ ] Add match-gated realtime messaging and notification preferences.
+- [x] Gate conversations and message reads/writes on mutual matches; persist message history.
+- [x] Refresh the open inbox and conversation history automatically through the REST API.
+- [ ] Add Socket.IO live delivery, notification preferences, and two-account deployed verification.
 - [ ] Implement block/report/unmatch, moderation queue, escalation and response process.
 - [ ] Add public-meetup and responsible-drinking safety surfaces.
 
@@ -52,10 +57,10 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [ ] Operate closed beta, review safety metrics, fix issues, then make a launch decision.
 
 ## Current status and blockers
-- Local frontend production build and backend TypeScript build pass. The authenticated client now calls the API; live end-to-end verification still requires deployment and a user-created test account.
+- Local frontend production build and backend TypeScript build pass. Database schema, consent-based Discovery, matches, and match-gated chat are implemented locally; deploy from `main` and verify with two accounts before tomorrow's test.
 - Private repository exists at `https://github.com/ButalaJoel/beer-bros`; the local `main` branch tracks `origin/main`.
 - The public Render hostname did not resolve during a direct external check from the current browser environment; retry from another network/browser before relying on it.
-- The Vercel rewrite to Render is live and `/api/health` responds successfully. Full write/read persistence remains to be verified through an account owned by the user.
+- The Vercel rewrite to Render is live and `/api/health` responds successfully. The new discovery schema/API and two-account match/chat path need verification after their deployment.
 - Render Free Postgres expires after 30 days. Choose a durable database plan before storing real accounts or conversations.
-- No production discovery matching, moderation operations, account recovery, or deletion exists.
+- Moderation operations, account recovery, account deletion, candidate pagination, and photo upload remain unimplemented.
 - Vercel + Render is the agreed hosting target. Production database will be PostgreSQL on Render unless a later requirement changes the decision.
