@@ -55,7 +55,7 @@ Give adults a welcoming place to share memorable social stories, follow people a
 - Authenticated members can message only after mutual Discovery interest creates a match and authorized conversation.
 - Messages persist through server-authorized APIs; inbox and chat currently poll REST endpoints. Socket.IO authorization exists, but the client does not yet use live WebSocket delivery.
 - Prevent messaging blocked accounts. Account recovery and email verification are not implemented.
-- Rate limits use shared PostgreSQL storage for general traffic, authentication, state-changing requests, and Socket.IO sends. Counters are HMAC keyed and expire; schema setup, deployment, and live restart verification are pending.
+- Rate limits use shared PostgreSQL storage for general traffic, authentication, state-changing requests, and Socket.IO sends. Counters are HMAC keyed and expire; deployment is live and API health returned `ok`, while threshold and restart persistence checks remain pending.
 
 ### Discovery
 - Display a large, responsive profile card with accessible profile details and optional drink label.
