@@ -24,6 +24,9 @@ Beer BROS is a premium, mobile-first social network for adults aged 18+ in Ugand
 - Keep backend services under `server/` with route, service, repository, middleware, schema/migration, and test layers. Client feature modules stay under `src/features/`; typed API clients under `src/lib/api/`.
 - Keep integrations behind typed boundaries and environment variables. The signed-in social feed and Discovery require the API; never silently fall back to fabricated remote data. Profiles appear in Discovery only after explicit opt-in.
 - Do not put secrets in the client bundle. Privileged keys and database credentials belong only in Render environment variables. Vercel receives only explicitly public frontend configuration.
+- Treat email, date of birth, password hashes, profile details, stories, match history, and messages as personal data. Minimize collection, never log credentials/session tokens or exact location, apply least privilege, and document retention/deletion before public launch.
+- Rate limits must use shared storage in production; process-local counters are only a preview baseline. Apply endpoint-specific limits to auth, social writes, discovery, search, and messaging, and test across restarts and multiple instances.
+- Do not describe the current preview as production-secure. Public beta requires verified backup/encryption/access controls, session revocation, account export/deletion, abuse protections, log redaction, incident response, and a security review.
 - The current backend uses a Render-hosted Node API and PostgreSQL. Do not add a Supabase dependency unless the architecture is explicitly changed and documented.
 - Use strict TypeScript, semantic HTML, accessible labels/focus states, responsive layouts, and reduced-motion support.
 - Keep product requirements in `docs/PRD.md`, milestones/status in `docs/ROADMAP.md`, and setup/current state in `README.md`. Update all relevant docs when decisions or status change.

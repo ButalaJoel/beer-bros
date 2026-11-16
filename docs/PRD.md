@@ -52,10 +52,10 @@ Give adults a welcoming place to share memorable social stories, follow people a
 - Provide loading, empty, error, and safe-result states; enforce block and privacy filters server-side.
 
 ### Messaging
-- Authenticated members can start or continue an authorized one-to-one conversation subject to product privacy rules.
-- Messages are persistent and delivered through a server-authorized API; live delivery uses WebSockets when configured.
-- The client uses session-backed registration/login, stories, follows, search, conversation history, and persistent message APIs. Discovery opt-in is explicit; pass/interest records persist; the recipient sees pending interest; reciprocal interest creates a match and private conversation. Messages are available only to mutual matches and the inbox polls for new messages. Account recovery/email verification are not implemented.
-- Support message history, unread state, report/block, and conversation controls. Prevent messaging blocked users; rate-limit new conversations and sends.
+- Authenticated members can message only after mutual Discovery interest creates a match and authorized conversation.
+- Messages persist through server-authorized APIs; inbox and chat currently poll REST endpoints. Socket.IO authorization exists, but the client does not yet use live WebSocket delivery.
+- Prevent messaging blocked accounts. Account recovery and email verification are not implemented.
+- Rate limits exist at the API and Socket.IO layers, but HTTP counters are process-local; move them to shared storage and add endpoint-specific limits before beta.
 
 ### Discovery
 - Display a large, responsive profile card with accessible profile details and optional drink label.
@@ -71,8 +71,8 @@ Give adults a welcoming place to share memorable social stories, follow people a
 
 ### Matching
 - A match occurs only when both members express interest.
-- Discovery matching requires authentication, match authorization, block/report checks, rate limits, and moderation pathways.
-- The current demo can show a match confirmation for a designated seeded profile but must label this as a simulation.
+- Discovery matching requires authentication, match authorization, block exclusions, rate limits, and moderation pathways.
+- Deployed two-account QA verified incoming likes, reciprocal match creation, and persistent message round-trip. Clearly labeled staging accounts remain in the preview database.
 
 ### Safety and privacy
 - 18+ eligibility is mandatory before production discovery access.
@@ -103,13 +103,19 @@ Give adults a welcoming place to share memorable social stories, follow people a
 - Keep authorization, validation, feed ranking, matching, search filters, and privacy enforcement server-side.
 
 ## 8. Current implementation gaps
-- Consent-based discovery actions/matching and match-gated message UI are implemented; two-account deployed round-trip verification remains pending. Location queries, media upload, push notifications, and client Socket.IO delivery remain out of scope for this preview.
+- Consent-based discovery actions/matching and match-gated message UI are implemented; deployed two-account round-trip is verified. Location queries, media upload, push notifications, and client Socket.IO delivery remain future work.
 - Account recovery, email verification, account deletion, editable profiles, and an in-product moderation/admin console.
 - The database remains a free preview instance and must move to a durable plan before real public use.
+- Rate limiting is not launch-grade: existing counters are in-memory and not shared across instances; endpoint-specific abuse limits and load/restart tests remain pending.
+- Complete data-protection operations are pending: data inventory/purpose and retention, export/deletion, backup/restore, provider encryption verification, access audit, credential rotation, and privacy/incident-response processes.
+- Session revocation, security-focused automated tests, independent security review, and log PII-redaction review remain pending.
 
 ## 9. Release gates
 - Legal/privacy review for Uganda and target markets.
 - Verified 18+ onboarding and safe location design.
+- Shared-store rate limits and tested abuse protections for account creation/login, social actions, Discovery, search, and messaging.
+- Documented data purpose/retention, account export/deletion, verified encrypted storage/backups, least-privilege access, recovery testing, and incident response.
+- Security review of sessions, CSRF/origin checks, authorization, logs, secrets and incident handling.
 - Block/report/unmatch and operational moderation available.
 - PostgreSQL permissions, storage protections, auth flows, abuse controls, and deletion verified.
 - Accessibility, security, performance, and device testing completed.
