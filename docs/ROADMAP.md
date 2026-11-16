@@ -42,12 +42,14 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [x] Add explicit Discovery opt-in and server-side candidate selection; share broad area only and never request exact coordinates.
 - [x] Persist pass/interest actions and create mutual matches plus conversations on reciprocal interest.
 - [x] Add incoming Likes you and Matches views, empty/error/loading feedback, block exclusions, and swipe buttons.
+- [x] Verify deployed two-account interest → Likes you → reciprocal match flow on Vercel + Render.
 - [ ] Add candidate pagination and further abuse/rate protections.
 
 ## Phase 4 — Messaging and safety operations
 - [x] Gate conversations and message reads/writes on mutual matches; persist message history.
 - [x] Refresh the open inbox and conversation history automatically through the REST API.
-- [ ] Add Socket.IO live delivery, notification preferences, and two-account deployed verification.
+- [x] Verify a saved message sent by one matched QA account appears in the other account's inbox and conversation.
+- [ ] Add Socket.IO live delivery and notification preferences; current inbox and open chat use REST polling.
 - [ ] Implement block/report/unmatch, moderation queue, escalation and response process.
 - [ ] Add public-meetup and responsible-drinking safety surfaces.
 
@@ -57,10 +59,14 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [ ] Operate closed beta, review safety metrics, fix issues, then make a launch decision.
 
 ## Current status and blockers
-- Local frontend production build and backend TypeScript build pass. Database schema, consent-based Discovery, matches, and match-gated chat are implemented locally; deploy from `main` and verify with two accounts before tomorrow's test.
+- Local frontend production build and backend TypeScript build pass. Render deploy `6f303d8` is Live and the database migration completed successfully.
 - Private repository exists at `https://github.com/ButalaJoel/beer-bros`; the local `main` branch tracks `origin/main`.
 - The public Render hostname did not resolve during a direct external check from the current browser environment; retry from another network/browser before relying on it.
-- The Vercel rewrite to Render is live and `/api/health` responds successfully. The new discovery schema/API and two-account match/chat path need verification after their deployment.
+- Deployed QA verification passed with two separate 18+ staging accounts: account A expressed interest; account B saw it in Likes you and reciprocated; both saw a match; account B's message persisted and appeared in account A's inbox/chat.
+- The swipe card registers horizontal pointer movement; its right direction calls the same persisted `interested` action as the tested Interested button, and left calls `pass`. The two-account live test used the accessible action button; physical-device gesture QA remains in Phase 5.
+- Render's first Discovery build failed on TypeScript strictness and the first live action found a PostgreSQL UUID inference error; both were fixed in `d8842f5` and `6f303d8`. Keep these commits in the history; do not revert them.
+- A clearly labeled second QA account (`beerbros_qa2`) and one staging chat message were created in the preview database for this verification. Account deletion is not implemented, so retain them as QA fixtures until a deletion workflow exists.
+- The Vercel rewrite to Render is live and `/api/health` responds successfully. Discovery schema migration and routes are live.
 - Render Free Postgres expires after 30 days. Choose a durable database plan before storing real accounts or conversations.
 - Moderation operations, account recovery, account deletion, candidate pagination, and photo upload remain unimplemented.
 - Vercel + Render is the agreed hosting target. Production database will be PostgreSQL on Render unless a later requirement changes the decision.

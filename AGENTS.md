@@ -45,3 +45,4 @@ Beer BROS is a premium, mobile-first social network for adults aged 18+ in Ugand
 - Administration is through Render workspace/database access, not a Beer BROS admin login. No in-product moderation/admin console exists yet. Use Render's database Connect details with `psql` or a trusted SQL client; never disclose credentials in chat or commit them.
 - Product name is “Beer BROS”; working tagline is “Good company. Your kind of night.”
 - Discovery candidate cards come from opted-in member profiles. Pass/interest is persisted; mutual interest creates a match and a conversation. The member may swipe horizontally or use the accessible Pass/Interested buttons.
+- Live QA verified the two-account interest, Likes you, reciprocal match, and message round-trip on the Vercel/Render preview. In-app chat uses REST history/send with polling; Socket.IO delivery and physical-device swipe QA remain pending.

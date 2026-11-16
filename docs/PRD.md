@@ -19,7 +19,7 @@ Give adults a welcoming place to share memorable social stories, follow people a
 3. Member opens Home to read and publish stories, react, comment, and follow accounts.
 4. Member searches for people and stories, opens profiles, and follows accounts.
 5. Members message through authorized conversations, with block/report controls available.
-6. Members may also use a distinct nearby discovery feature with approximate location and mutual interest; messaging remains subject to account and safety controls.
+6. Members may also use a distinct Discovery feature with broad-area profile details and mutual interest; mutual interest is required before private messaging.
 
 ## 4. Functional requirements
 ### Home feed and stories
@@ -28,6 +28,17 @@ Give adults a welcoming place to share memorable social stories, follow people a
 - Members can publish text and optionally attach a photo; story length, media rules, visibility, edits, deletion, reactions, and comments must be specified before launch.
 - Feed items identify their author, timestamp, optional topic/drink tag, and reaction/comment counts.
 - Members can react, comment, report content, and open the author profile.
+
+### Discovery and mutual interest
+- Discovery is opt-in and hidden by default. Only active, opted-in adults can appear as candidates.
+- Horizontal swipe right or the accessible Interested control records interest; swipe left or Pass records a pass. The other member sees incoming interest under Likes you.
+- Reciprocal interest creates a persistent match and private conversation. A pass does not create a match.
+- Share broad area only. Do not collect or expose exact coordinates.
+
+### Messaging
+- Members can read/send private messages only in a conversation created by a mutual Discovery match. Blocked pairs cannot message.
+- Conversations and messages persist in PostgreSQL. Inbox previews refresh automatically; the current preview uses REST polling while Socket.IO delivery remains future work.
+- The two-account path is verified against the deployed Vercel and Render preview. Physical-device gesture QA, moderation operations, account recovery/deletion, and public production readiness remain pending.
 - Feed ranking must avoid promoting dangerous consumption, harassment, or viral intoxication content; provide chronological or transparent controls for initial release.
 - Clearly distinguish member content from sponsored or system content; no alcohol advertising in the initial release.
 
