@@ -97,7 +97,7 @@ Give adults a welcoming place to share memorable social stories, follow people a
 
 ## 7. Hosting and system architecture
 - Frontend: React/Vite application deployed on Vercel.
-- Backend: TypeScript API deployed on Render, backed by managed PostgreSQL. Neon PostgreSQL Free is selected as the target; the current Render database remains the active source until migrated and verified. WebSockets support live messaging when client delivery is enabled.
+- Backend: TypeScript API deployed on Render, backed by managed PostgreSQL. Neon PostgreSQL Free is the active staging database; the prior Render database is retained as a pre-cutover snapshot. Post-cutover writes are not replicated, so any rollback needs data reconciliation. WebSockets support live messaging when client delivery is enabled.
 - Route `/api/*` through the Vercel app origin using the Vercel rewrite before the SPA fallback; set Render `WEB_ORIGIN` to the exact Vercel origin.
 - Local development supports separate client and server processes with documented environment examples.
 - Keep authorization, validation, feed ranking, matching, search filters, and privacy enforcement server-side.
@@ -105,7 +105,7 @@ Give adults a welcoming place to share memorable social stories, follow people a
 ## 8. Current implementation gaps
 - Consent-based discovery actions/matching and match-gated message UI are implemented; deployed two-account round-trip is verified. Location queries, media upload, push notifications, and client Socket.IO delivery remain future work.
 - Account recovery, email verification, account deletion, editable profiles, and an in-product moderation/admin console.
-- Neon PostgreSQL Free is provisioned as the staging destination but the data copy and runtime cutover are pending. Render PostgreSQL remains the active source and rollback database. Free-tier data still requires an off-site backup and is not production recovery-ready.
+- Neon PostgreSQL Free is the active staging destination. The source-to-target copy and API read/write checks passed; the old Render database remains as a pre-cutover snapshot, not a synchronized rollback. Free-tier data still requires an off-site backup and is not production recovery-ready. The runtime currently uses the Neon owner connection; a least-privilege app role remains pending before public beta.
 - Rate limiting is not launch-grade: existing counters are in-memory and not shared across instances; endpoint-specific abuse limits and load/restart tests remain pending.
 - Complete data-protection operations are pending: data inventory/purpose and retention, export/deletion, backup/restore, provider encryption verification, access audit, credential rotation, and privacy/incident-response processes.
 - Session revocation, security-focused automated tests, independent security review, and log PII-redaction review remain pending.

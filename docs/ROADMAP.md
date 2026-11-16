@@ -28,8 +28,8 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [x] Owner signs in to Neon and provisions a Free project/production branch; credentials must stay in the provider and Render environment, never GitHub or Vercel.
 - [x] Add a guarded source-to-empty-target migration script with source write locking, a transaction, dependency-ordered table copy, and per-table row-count verification.
 - [x] Add a Render-Free-compatible guarded startup migration path with a committed idempotency marker; interactive shell access is unavailable on the Free service.
-- [ ] Copy existing preview data to Neon, verify API behavior, then serve through Neon `NEON_DATABASE_URL`; retain Render source as rollback until post-cutover checks pass.
-- [ ] Remove the Render-managed database binding from `render.yaml` only after successful cutover, so a Blueprint sync cannot reset the active database.
+- [x] Copy preview data to Neon, verify per-table counts, and serve the API through Neon `NEON_DATABASE_URL`; retain Render source as a pre-cutover snapshot (new writes are not replicated back).
+- [ ] Remove the Render-managed database binding from `render.yaml` after the rollback window, so a Blueprint sync cannot reset the active database.
 - [x] Implement TypeScript API, initial schema, registration/login, server-side 18+ gate, and profile/story/follow/search endpoints.
 - [x] Add authenticated conversation/message routes and Socket.IO room authorization.
 - [x] Add match-gated conversations and persistent message history/send APIs.
@@ -73,7 +73,7 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [ ] Operate closed beta, review safety metrics, fix issues, then make a launch decision.
 
 ## Current status and blockers
-- Local frontend production build and backend TypeScript build pass. Render deploy `a0dc877` is Live and the database schema migration completed successfully.
+- Local frontend production build and backend TypeScript build pass. Render deploy `055d548` and Vercel production deployment are Live. Neon schema migration and data copy completed successfully.
 - Private repository exists at `https://github.com/ButalaJoel/beer-bros`; the local `main` branch tracks `origin/main`.
 - The Vercel same-origin API proxy and Render service were verified through the live app. Direct hostname checks from the shell remain limited by its network proxy.
 - Deployed QA verification passed with two separate 18+ staging accounts: account A expressed interest; account B saw it in Likes you and reciprocated; both saw a match; account B's message persisted and appeared in account A's inbox/chat.
@@ -85,8 +85,10 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - Security gaps: HTTP rate-limit counters use the default process-local memory store and reset across restarts/instances; socket counters are also in memory. There are no endpoint-specific write limits, email verification, password recovery, session revocation, account export/deletion, complete moderation operations, or independent security review. Do not describe the preview as production-secure.
 - Data-protection status: exact coordinates are not collected or shown; Discovery shares only a broad area. The service stores account email, date of birth, password hash, profile fields, stories, follows, match state, and messages. Provider encryption/backups, retention and deletion processes, privileged access auditing, recovery drills, and log redaction have not yet been verified or implemented as a complete operational policy.
 - Render Free Postgres expires after 30 days. Choose a durable database plan before storing real accounts or conversations.
-- Neon Free project `my-first-project` (Frankfurt, `neondb`) is provisioned. The Render database remains the active source until the guarded copy, per-table verification, and live API checks complete.
+- Neon Free project `my-first-project` (Frankfurt, `neondb`) is the active staging database. Render Postgres `beer-bros-db` remains as a pre-cutover snapshot; new Neon writes are not replicated. Its free expiry is December 15, 2026.
 - Neon Free currently offers 1 GB storage and 100 compute-hours/project/month, scaling to zero when inactive; plan for cold starts and maintain off-site exports because free-tier recovery guarantees are limited.
-- `scripts/migrate-postgres.mjs` rejects an occupied target unless it has the committed completion marker. `scripts/migrate-on-start.mjs` is disabled by default and can run the copy inside Render Free before the API listens. Credentials stay in Render environment variables; the source is unchanged.
+- `scripts/migrate-postgres.mjs` copied 2 users, 2 profiles, 1 story, 1 match, and 1 message (all other app tables had zero rows), verified per-table counts, and committed its idempotency marker. Render deploy logs confirmed the API started after the copy. Vercel `/api/health` returned `ok`; the copied QA account could read its old story/chat, publish a new story, send a chat message, and see both new writes after page reload.
+- `COPY_DATABASE_ON_START=true` remains on the Render service for now; the committed marker makes later restarts no-op. Disable this flag after the migration verification window.
+- The Neon runtime variable currently uses the project owner role. Provision a least-privilege app role and review migration/DDL permissions before public beta. Do not treat Neon Free as a production backup or recovery plan.
 - Moderation operations, account recovery, account deletion/export, candidate pagination, photo upload, and launch-grade data-protection controls remain unimplemented.
 - Vercel + Render remains the app hosting target; Neon PostgreSQL Free is the selected staging database target. Do not call the free database production-ready.
