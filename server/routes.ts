@@ -284,9 +284,9 @@ router.post('/discovery/actions', requireAuth, async (req, res, next) => {
   if (!parsed.success) return res.status(400).json({ error: 'Choose a valid profile and pass or interest action.' })
   const { targetUserId, action } = parsed.data
   if (targetUserId === req.user!.id) return res.status(400).json({ error: 'You cannot react to your own profile.' })
-  let client: Awaited<ReturnType<typeof pool.connect>> | undefined
   try {
-    client = await pool.connect()
+    const client = await pool.connect()
+    try {
     await client.query('BEGIN')
     await client.query("SELECT pg_advisory_xact_lock(hashtextextended(LEAST($1::text,$2::text)||':'||GREATEST($1::text,$2::text), 0))", [req.user!.id, targetUserId])
     const eligibility = await client.query(
@@ -318,10 +318,11 @@ router.post('/discovery/actions', requireAuth, async (req, res, next) => {
     }
     await client.query('COMMIT')
     return res.json({ action, matched, conversationId })
-  } catch (error) {
-    if (client) await client.query('ROLLBACK').catch(() => undefined)
-    return next(error)
-  } finally { client?.release() }
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined)
+      return next(error)
+    } finally { client.release() }
+  } catch (error) { return next(error) }
 })
 
 router.post('/users/:userId/block', requireAuth, async (req, res, next) => {
