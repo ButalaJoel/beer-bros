@@ -44,6 +44,7 @@ Give adults a welcoming place to share memorable social stories, follow people a
 
 ### Accounts, profiles, and following
 - Support account registration, login, logout, recovery, age gate, profile setup/edit, and account deletion.
+- Closed-beta member registration is open: each eligible adult creates a unique account using their own email and password. Arbitrary credentials must never bypass account authentication or grant admin access.
 - Follow/unfollow accounts and view follower/following lists with privacy controls defined before beta.
 - Profiles include biography, photo(s), interests, broad location label, optional current drink, and social intent.
 
@@ -105,7 +106,7 @@ Give adults a welcoming place to share memorable social stories, follow people a
 ## 8. Current implementation gaps
 - Consent-based discovery actions/matching and match-gated message UI are implemented; deployed two-account round-trip is verified. Location queries, media upload, push notifications, and client Socket.IO delivery remain future work.
 - Account recovery, email verification, account deletion, editable profiles, and moderation escalation workflows.
-- Admin console: server allowlist-controlled access; publish/archive community announcements; review reports and set open/reviewing/resolved/dismissed status; write metadata-only audit records. Announcement messaging is community information, not an unmarked ad channel.
+- Admin console: server allowlist-controlled access; publish/archive community announcements; review reports and set open/reviewing/resolved/dismissed status; write metadata-only audit records. Announcement messaging is community information, not an unmarked ad channel. Do not grant admin to any authenticated member or make admin password universal.
 - Neon PostgreSQL Free is the active staging destination. The source-to-target copy and API read/write checks passed; the old Render database remains as a pre-cutover snapshot, not a synchronized rollback. Free-tier data still requires an off-site backup and is not production recovery-ready. The runtime now uses the SQL-created DML-only `beer_bros_app` role. Schema changes run manually through a GitHub Actions workflow with an owner secret isolated from the API runtime; configure that Actions secret before the next schema change.
 - Shared PostgreSQL-backed request limits are implemented; threshold/restart verification and tuning remain pending.
 - Complete data-protection operations are pending: data inventory/purpose and retention, export/deletion, backup/restore, provider encryption verification, access audit, credential rotation, and privacy/incident-response processes.
