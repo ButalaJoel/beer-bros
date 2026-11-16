@@ -24,6 +24,11 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 
 ## Phase 2 — Backend foundation on Render
 - [x] Create Render free preview web service and PostgreSQL database; configure generated secrets and environment separation. Do not store real member data on the 30-day free database.
+- [x] Select Neon PostgreSQL Free as the next staging database after comparing current free-tier limits and the app's standard PostgreSQL `pg` integration.
+- [ ] Owner signs in to Neon and provisions the Beer BROS project/branch; credentials must stay in the provider and Render environment, never GitHub or Vercel.
+- [x] Add a guarded source-to-empty-target migration script with source write locking, a transaction, dependency-ordered table copy, and per-table row-count verification.
+- [ ] Copy existing preview data to Neon, verify API behavior, then update Render `DATABASE_URL`; retain Render source as rollback until post-cutover checks pass.
+- [ ] Remove the Render-managed database binding from `render.yaml` only after successful cutover, so a Blueprint sync cannot reset the active database.
 - [x] Implement TypeScript API, initial schema, registration/login, server-side 18+ gate, and profile/story/follow/search endpoints.
 - [x] Add authenticated conversation/message routes and Socket.IO room authorization.
 - [x] Add match-gated conversations and persistent message history/send APIs.
@@ -79,5 +84,8 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - Security gaps: HTTP rate-limit counters use the default process-local memory store and reset across restarts/instances; socket counters are also in memory. There are no endpoint-specific write limits, email verification, password recovery, session revocation, account export/deletion, complete moderation operations, or independent security review. Do not describe the preview as production-secure.
 - Data-protection status: exact coordinates are not collected or shown; Discovery shares only a broad area. The service stores account email, date of birth, password hash, profile fields, stories, follows, match state, and messages. Provider encryption/backups, retention and deletion processes, privileged access auditing, recovery drills, and log redaction have not yet been verified or implemented as a complete operational policy.
 - Render Free Postgres expires after 30 days. Choose a durable database plan before storing real accounts or conversations.
+- Neon is the selected target, but no Neon project exists yet because this browser session has no Neon account logged in. The Render database remains the only active database; do not switch Render configuration until a Neon connection is available and tested.
+- Neon Free currently offers 1 GB storage and 100 compute-hours/project/month, scaling to zero when inactive; plan for cold starts and maintain off-site exports because free-tier recovery guarantees are limited.
+- `scripts/migrate-postgres.mjs` is implemented but cannot run until the owner supplies connection strings directly through secure local environment variables. It rejects a non-empty destination and leaves the source unchanged.
 - Moderation operations, account recovery, account deletion/export, candidate pagination, photo upload, and launch-grade data-protection controls remain unimplemented.
-- Vercel + Render is the agreed hosting target. Production database will be PostgreSQL on Render unless a later requirement changes the decision.
+- Vercel + Render remains the app hosting target; Neon PostgreSQL Free is the selected staging database target. Do not call the free database production-ready.

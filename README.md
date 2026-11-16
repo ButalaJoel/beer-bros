@@ -3,7 +3,7 @@
 Premium social network for adults 18+ in Uganda: share your best social stories, follow accounts, search, message, and discover nearby people. **Good company. Your kind of night.**
 
 ## Current status
-The signed-in preview connects account registration/login, stories, search, Discovery, matches, and inbox messaging to the Render PostgreSQL API. Discovery requires member opt-in; pass and interest actions persist, incoming interest appears in Likes you, and mutual interest creates a match and chat. Messaging is match-gated and the inbox refreshes automatically. Two-account live verification passed: interest appeared in Likes you, reciprocal interest created a match, and a persisted message sent by one account appeared in the other account's inbox/chat. The card's horizontal pointer gesture and its accessible buttons call the same pass/interest handler; touch-device QA remains outstanding. Clearly labeled QA accounts and a staging message remain in the preview database. Preview URLs: [Vercel](https://beer-bros-nine.vercel.app) and [Render API](https://beer-bros-api.onrender.com). Recovery, profile editing, moderation console, and photo upload remain pending. The Render free database is scheduled to expire December 15, 2026 and must not hold real public user data.
+The signed-in preview connects account registration/login, stories, search, Discovery, matches, and inbox messaging to PostgreSQL. The active source is Render PostgreSQL; Neon PostgreSQL Free is selected as the next staging target, but it is not provisioned or cut over yet. Discovery requires member opt-in; pass and interest actions persist, incoming interest appears in Likes you, and mutual interest creates a match and chat. Messaging is match-gated and the inbox refreshes automatically. Two-account live verification passed: interest appeared in Likes you, reciprocal interest created a match, and a persisted message sent by one account appeared in the other account's inbox/chat. The card's horizontal pointer gesture and its accessible buttons call the same pass/interest handler; touch-device QA remains outstanding. Clearly labeled QA accounts and a staging message remain in the current preview database. Preview URLs: [Vercel](https://beer-bros-nine.vercel.app) and [Render API](https://beer-bros-api.onrender.com). Recovery, profile editing, moderation console, and photo upload remain pending. The Render free database is scheduled to expire December 15, 2026 and must not hold real public user data.
 
 ## Security and data protection status
 Baseline controls include Helmet security headers, allowlisted credentialed CORS, origin checks on API writes, a 32 KB JSON body cap, schema validation, bcrypt password hashing, HttpOnly cookies (Secure in production), authenticated server-side authorization, and rate limits: 120 requests per IP/minute, 20 auth requests per IP/15 minutes, and 20 Socket.IO sends per user/minute. HTTP and Socket.IO counters are process-local; they reset on restart and are not coordinated across instances. These are preview safeguards, not a launch-ready abuse-control system. Before public beta, add a shared rate-limit store and route-specific limits, account/session recovery and revocation, account export/deletion, retention rules, tested backup/restore, verified encryption and least-privilege database access, credential rotation, log redaction, incident response, and an independent security review. The service stores email, date of birth, password hash, profile data, stories, follows, matches, and messages; Discovery does not collect exact coordinates.
@@ -14,7 +14,7 @@ Baseline controls include Helmet security headers, allowlisted credentialed CORS
 - Lucide React
 - Express, PostgreSQL, and Socket.IO API scaffold
 - Vercel Hobby front end: [beer-bros-nine.vercel.app](https://beer-bros-nine.vercel.app)
-- Render free preview Blueprint: `beer-bros-preview`, service `beer-bros-api`, database `beer-bros-db` (`https://beer-bros-api.onrender.com`)
+- Render free preview Blueprint: `beer-bros-preview`, service `beer-bros-api`, current source database `beer-bros-db` (`https://beer-bros-api.onrender.com`). Neon Free is the selected destination and still needs owner account provisioning.
 
 ## GitHub
 Private source repository: [ButalaJoel/beer-bros](https://github.com/ButalaJoel/beer-bros). The local `main` branch tracks `origin/main`; Vercel and Render deploy from `main`.
@@ -36,6 +36,7 @@ Run the frontend and API in separate terminals. Copy `.env.example` to `.env` an
 - `npm run server:build` — type-check and compile API
 - `npm run server:start` — run compiled API
 - `npm run db:migrate` — create/update PostgreSQL tables
+- `npm run db:copy` — copy app tables from `SOURCE_DATABASE_URL` into an empty `TARGET_DATABASE_URL`
 - `npm run build` — TypeScript check and production build
 - `npm run preview` — serve the production build locally
 - `npm run test:api-smoke` — check API health, auth gating, 18+ age gate, and request-origin protection
@@ -54,10 +55,15 @@ server/
   routes.ts     Account, story, follow, search, report, block, and chat APIs
   index.ts      Express and Socket.IO server
   db/schema.sql PostgreSQL schema
+scripts/
+  migrate-postgres.mjs Safe PostgreSQL source-to-empty-target copy
 ```
 
 ## Configuration
-Backend routes require `DATABASE_URL`, `JWT_SECRET`, and exact `WEB_ORIGIN`. Keep these in Render's environment, never in Vercel client variables. To administer PostgreSQL, sign in to Render, open `beer-bros-db`, choose **Connect**, and use its PSQL command/URL with `psql`, pgAdmin, or another trusted SQL client. Never paste the password or full connection URL into source control or chat. There is no Beer BROS admin login or in-product admin console yet; Render workspace access controls database administration. The free preview database expires after 30 days and must be replaced with a durable plan before inviting public users.
+Backend routes require `DATABASE_URL`, `JWT_SECRET`, and exact `WEB_ORIGIN`. Keep these in Render's environment, never in Vercel client variables. To administer the current PostgreSQL database, sign in to Render, open `beer-bros-db`, choose **Connect**, and use its PSQL command/URL with `psql`, pgAdmin, or another trusted SQL client. Never paste a password or full connection URL into source control or chat. There is no Beer BROS admin login or in-product admin console; provider workspace access controls database administration. The Render free preview database expires after 30 days. Neon Free is selected as the next staging target, not as a production backup plan.
+
+## Database migration
+`npm run db:copy` applies the current schema to the destination, takes a consistent source snapshot, briefly queues source writes during the copy, inserts rows in foreign-key order, verifies row counts per table, and rolls back the target copy on errors. Set `SOURCE_DATABASE_URL` and `TARGET_DATABASE_URL` only in a local untracked `.env` or secure process environment. The script refuses a non-empty target and logs counts only. After copying, verify the application against Neon before changing Render's `DATABASE_URL`; keep Render's original database intact until live account, story, Discovery, match, and chat checks pass.
 
 ## Safety and privacy
 This demo is for adults 18+. Do not use it to encourage excessive drinking. Exact user coordinates are not shown or used in the demo. Read [AGENTS.md](AGENTS.md), [docs/PRD.md](docs/PRD.md), and [docs/ROADMAP.md](docs/ROADMAP.md) before major development.
