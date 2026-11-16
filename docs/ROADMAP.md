@@ -30,6 +30,7 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [x] Add a Render-Free-compatible guarded startup migration path with a committed idempotency marker; interactive shell access is unavailable on the Free service.
 - [x] Copy preview data to Neon, verify per-table counts, and serve the API through Neon `NEON_DATABASE_URL`; retain Render source as a pre-cutover snapshot (new writes are not replicated back).
 - [ ] Remove the Render-managed database binding from `render.yaml` after the rollback window, so a Blueprint sync cannot reset the active database.
+- [x] Remove database-copy execution from the normal Render startup path; retain the old source database as a pre-cutover snapshot until expiry.
 - [x] Implement TypeScript API, initial schema, registration/login, server-side 18+ gate, and profile/story/follow/search endpoints.
 - [x] Add authenticated conversation/message routes and Socket.IO room authorization.
 - [x] Add match-gated conversations and persistent message history/send APIs.
@@ -39,6 +40,7 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [ ] Add session revocation and session/device management; current signed tokens remain valid until expiry or account removal.
 - [x] Apply the current schema to the preview database during Render build and verify migration completion in Render logs.
 - [ ] Add automated migration verification and a broader security review.
+- [x] Prepare a separate manually triggered GitHub Actions schema migration path so owner credentials do not need to be in the Render API runtime.
 - [x] Deploy API service to Render Free from the private GitHub repository; Render marks it Live and its deploy logs confirm the health check and database migration succeeded.
 - [x] Set Render `WEB_ORIGIN` to `https://beer-bros-nine.vercel.app` and redeploy.
 - [x] Verify the Render service is Live and the Vercel same-origin API proxy reaches it. Direct hostname checks from this local shell are blocked by its network proxy, so use the browser/Vercel proxy for live checks.
@@ -68,7 +70,8 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 ## Phase 5 — Closed beta and launch readiness
 - [ ] Test on target Android/iOS browsers and low-bandwidth conditions.
 - [ ] Complete accessibility, privacy, security, legal, and performance reviews.
-- [ ] Replace process-local rate-limit counters with a shared store and add endpoint-specific account/IP limits for registration/login, content writes, follows, Discovery actions, search, and message sending.
+- [x] Implement shared PostgreSQL counters for general traffic, auth, state-changing API requests, and Socket.IO messages; HMAC keys before storage and clean expired buckets.
+- [ ] Apply the shared rate-limit schema and scoped-role grants, deploy, and verify limits across restarts.
 - [ ] Test rate-limit behavior across restarts/multiple instances and tune thresholds to reduce automated abuse without blocking shared-network users.
 - [ ] Operate closed beta, review safety metrics, fix issues, then make a launch decision.
 
@@ -81,14 +84,15 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - Render's first Discovery build failed on TypeScript strictness and the first live action found a PostgreSQL UUID inference error; both were fixed in `d8842f5` and `6f303d8`. Keep these commits in the history; do not revert them.
 - A clearly labeled second QA account (`beerbros_qa2`) and one staging chat message were created in the preview database for this verification. Account deletion is not implemented, so retain them as QA fixtures until a deletion workflow exists.
 - The Vercel rewrite to Render is live and `/api/health` responds successfully. Discovery schema migration and routes are live.
-- Security baseline present: Helmet headers, allowlisted credentialed CORS, origin checks for state-changing API calls, a 32 KB JSON body limit, server-side input validation, bcrypt password hashing, HttpOnly session cookies (Secure in production), authenticated authorization checks, and process-local rate limits (120 requests/IP/minute, auth 20/IP/15 minutes, socket send 20/user/minute).
-- Security gaps: HTTP rate-limit counters use the default process-local memory store and reset across restarts/instances; socket counters are also in memory. There are no endpoint-specific write limits, email verification, password recovery, session revocation, account export/deletion, complete moderation operations, or independent security review. Do not describe the preview as production-secure.
+- Security baseline present: Helmet headers, allowlisted credentialed CORS, origin checks for state-changing API calls, a 32 KB JSON body limit, server-side input validation, bcrypt password hashing, HttpOnly session cookies (Secure in production), authenticated authorization checks. Shared PostgreSQL rate limiting is implemented locally but requires schema setup and deployment before it is active.
+- Security gaps: deployed counters remain process-local until the new schema and code are live. Email verification, password recovery, session revocation, account export/deletion, complete moderation operations, and independent security review are not complete. Do not describe the preview as production-secure.
 - Data-protection status: exact coordinates are not collected or shown; Discovery shares only a broad area. The service stores account email, date of birth, password hash, profile fields, stories, follows, match state, and messages. Provider encryption/backups, retention and deletion processes, privileged access auditing, recovery drills, and log redaction have not yet been verified or implemented as a complete operational policy.
 - Render Free Postgres expires after 30 days. Choose a durable database plan before storing real accounts or conversations.
 - Neon Free project `my-first-project` (Frankfurt, `neondb`) is the active staging database. Render Postgres `beer-bros-db` remains as a pre-cutover snapshot; new Neon writes are not replicated. Its free expiry is December 15, 2026.
 - Neon Free currently offers 1 GB storage and 100 compute-hours/project/month, scaling to zero when inactive; plan for cold starts and maintain off-site exports because free-tier recovery guarantees are limited.
 - `scripts/migrate-postgres.mjs` copied 2 users, 2 profiles, 1 story, 1 match, and 1 message (all other app tables had zero rows), verified per-table counts, and committed its idempotency marker. Render deploy logs confirmed the API started after the copy. Vercel `/api/health` returned `ok`; the copied QA account could read its old story/chat, publish a new story, send a chat message, and see both new writes after page reload.
 - `COPY_DATABASE_ON_START=true` remains on the Render service for now; the committed marker makes later restarts no-op. Disable this flag after the migration verification window.
-- The Neon runtime variable currently uses the project owner role. Provision a least-privilege app role and review migration/DDL permissions before public beta. Do not treat Neon Free as a production backup or recovery plan.
+- The Neon runtime variable currently uses the project owner role. `docs/SECURITY_RUNBOOK.md` contains the scoped SQL role grants and deployment sequence; provisioning the role and rotating Render credentials still require an operator. Do not treat Neon Free as a production backup or recovery plan.
 - Moderation operations, account recovery, account deletion/export, candidate pagination, photo upload, and launch-grade data-protection controls remain unimplemented.
 - Vercel + Render remains the app hosting target; Neon PostgreSQL Free is the selected staging database target. Do not call the free database production-ready.
+

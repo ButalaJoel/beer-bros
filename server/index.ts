@@ -11,10 +11,12 @@ import { z } from 'zod'
 import { pool } from './db.js'
 import { getSessionCookieName, getSessionSecret } from './auth.js'
 import { router } from './routes.js'
+import { PostgresRateLimitStore, startRateLimitCleanup } from './rate-limit-store.js'
 
 const app = express()
 const server = createServer(app)
-const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false })
+const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, store: new PostgresRateLimitStore('auth') })
+const writeLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false, store: new PostgresRateLimitStore('writes') })
 const origins = (process.env.WEB_ORIGIN ?? 'http://localhost:5173').split(',').map((origin) => origin.trim()).filter(Boolean)
 const allowedOrigins = new Set(origins)
 const corsOptions: cors.CorsOptions = {
@@ -34,7 +36,7 @@ app.use(helmet())
 app.use(cors(corsOptions))
 app.use(express.json({ limit: '32kb' }))
 app.use(cookieParser())
-app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }))
+app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false, store: new PostgresRateLimitStore('general') }))
 
 app.use('/api', (req, res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next()
@@ -43,6 +45,7 @@ app.use('/api', (req, res, next) => {
   return next()
 })
 app.use('/api/auth', authLimiter)
+app.use('/api', (req, res, next) => ['POST', 'PUT', 'DELETE'].includes(req.method) ? writeLimiter(req, res, next) : next())
 app.use('/api', router)
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }))
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -65,7 +68,7 @@ io.use((socket, next) => {
 })
 
 const sendMessageSchema = z.object({ conversationId: z.string().uuid(), body: z.string().trim().min(1).max(2000) })
-const socketSendCounts = new Map<string, { count: number; resetAt: number }>()
+const socketLimiter = new PostgresRateLimitStore('socket_message')
 io.on('connection', (socket) => {
   const userId = socket.data.userId as string
   socket.on('conversation:join', async (conversationId: unknown, acknowledge?: (result: { ok: boolean }) => void) => {
@@ -86,11 +89,9 @@ io.on('connection', (socket) => {
   socket.on('message:send', async (payload: unknown, acknowledge?: (result: { ok: boolean; message?: unknown; error?: string }) => void) => {
     const parsed = sendMessageSchema.safeParse(payload)
     if (!parsed.success) return acknowledge?.({ ok: false, error: 'Message is invalid.' })
-    const now = Date.now()
-    const bucket = socketSendCounts.get(userId)
-    if (bucket && bucket.resetAt > now && bucket.count >= 20) return acknowledge?.({ ok: false, error: 'Please slow down before sending another message.' })
-    socketSendCounts.set(userId, bucket && bucket.resetAt > now ? { count: bucket.count + 1, resetAt: bucket.resetAt } : { count: 1, resetAt: now + 60_000 })
     try {
+      const rate = await socketLimiter.increment(userId)
+      if (rate.totalHits > 20) return acknowledge?.({ ok: false, error: 'Please slow down before sending another message.' })
       const { conversationId, body } = parsed.data
       if (!socket.rooms.has(`conversation:${conversationId}`)) return acknowledge?.({ ok: false, error: 'Join this conversation before sending a message.' })
       const result = await pool.query(
@@ -108,11 +109,9 @@ io.on('connection', (socket) => {
       return acknowledge?.({ ok: true, message })
     } catch { return acknowledge?.({ ok: false, error: 'Message could not be sent.' }) }
   })
-  socket.on('disconnect', () => {
-    const bucket = socketSendCounts.get(userId)
-    if (bucket?.resetAt && bucket.resetAt < Date.now()) socketSendCounts.delete(userId)
-  })
 })
+
+startRateLimitCleanup()
 
 const port = Number(process.env.PORT ?? 3001)
 server.listen(port, '0.0.0.0', () => console.log(`Beer BROS API listening on ${port}`))
@@ -124,3 +123,4 @@ async function shutdown() {
 }
 process.on('SIGTERM', () => { void shutdown() })
 process.on('SIGINT', () => { void shutdown() })
+

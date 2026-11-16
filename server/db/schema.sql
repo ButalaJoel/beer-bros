@@ -125,3 +125,14 @@ CREATE INDEX IF NOT EXISTS messages_conversation_idx ON messages (conversation_i
 CREATE INDEX IF NOT EXISTS discovery_incoming_idx ON discovery_actions (target_id, created_at DESC) WHERE action='interested';
 CREATE INDEX IF NOT EXISTS matches_recent_idx ON matches (user_a, created_at DESC);
 CREATE INDEX IF NOT EXISTS matches_recent_b_idx ON matches (user_b, created_at DESC);
+
+-- Shared counters keep abuse limits consistent across API processes and restarts.
+CREATE TABLE IF NOT EXISTS api_rate_limits (
+  limiter text NOT NULL,
+  key_hash text NOT NULL,
+  hits integer NOT NULL CHECK (hits > 0),
+  reset_at timestamptz NOT NULL,
+  PRIMARY KEY (limiter, key_hash)
+);
+CREATE INDEX IF NOT EXISTS api_rate_limits_reset_idx ON api_rate_limits (reset_at);
+

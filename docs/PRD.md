@@ -1,6 +1,6 @@
 # Beer BROS Product Requirements
 
-**Status:** Product requirements and implementation status, 15 November 2026
+**Status:** Product requirements and implementation status, 16 November 2026
 **Audience:** Adults aged 18+ in Uganda  
 **Product:** Mobile-first social network and discovery web application
 
@@ -55,7 +55,7 @@ Give adults a welcoming place to share memorable social stories, follow people a
 - Authenticated members can message only after mutual Discovery interest creates a match and authorized conversation.
 - Messages persist through server-authorized APIs; inbox and chat currently poll REST endpoints. Socket.IO authorization exists, but the client does not yet use live WebSocket delivery.
 - Prevent messaging blocked accounts. Account recovery and email verification are not implemented.
-- Rate limits exist at the API and Socket.IO layers, but HTTP counters are process-local; move them to shared storage and add endpoint-specific limits before beta.
+- Rate limits use shared PostgreSQL storage for general traffic, authentication, state-changing requests, and Socket.IO sends. Counters are HMAC keyed and expire; schema setup, deployment, and live restart verification are pending.
 
 ### Discovery
 - Display a large, responsive profile card with accessible profile details and optional drink label.
@@ -105,7 +105,7 @@ Give adults a welcoming place to share memorable social stories, follow people a
 ## 8. Current implementation gaps
 - Consent-based discovery actions/matching and match-gated message UI are implemented; deployed two-account round-trip is verified. Location queries, media upload, push notifications, and client Socket.IO delivery remain future work.
 - Account recovery, email verification, account deletion, editable profiles, and an in-product moderation/admin console.
-- Neon PostgreSQL Free is the active staging destination. The source-to-target copy and API read/write checks passed; the old Render database remains as a pre-cutover snapshot, not a synchronized rollback. Free-tier data still requires an off-site backup and is not production recovery-ready. The runtime currently uses the Neon owner connection; a least-privilege app role remains pending before public beta.
+- Neon PostgreSQL Free is the active staging destination. The source-to-target copy and API read/write checks passed; the old Render database remains as a pre-cutover snapshot, not a synchronized rollback. Free-tier data still requires an off-site backup and is not production recovery-ready. The runtime currently uses the Neon owner connection; a least-privilege app role remains pending before public beta. Schema changes are prepared to run manually through a GitHub Actions workflow with an owner secret isolated from the API runtime.
 - Rate limiting is not launch-grade: existing counters are in-memory and not shared across instances; endpoint-specific abuse limits and load/restart tests remain pending.
 - Complete data-protection operations are pending: data inventory/purpose and retention, export/deletion, backup/restore, provider encryption verification, access audit, credential rotation, and privacy/incident-response processes.
 - Session revocation, security-focused automated tests, independent security review, and log PII-redaction review remain pending.
@@ -113,9 +113,10 @@ Give adults a welcoming place to share memorable social stories, follow people a
 ## 9. Release gates
 - Legal/privacy review for Uganda and target markets.
 - Verified 18+ onboarding and safe location design.
-- Shared-store rate limits and tested abuse protections for account creation/login, social actions, Discovery, search, and messaging.
+- Apply and verify shared-store rate limits and tested abuse protections for account creation/login, social actions, Discovery, search, and messaging.
 - Documented data purpose/retention, account export/deletion, verified encrypted storage/backups, least-privilege access, recovery testing, and incident response.
 - Security review of sessions, CSRF/origin checks, authorization, logs, secrets and incident handling.
 - Block/report/unmatch and operational moderation available.
 - PostgreSQL permissions, storage protections, auth flows, abuse controls, and deletion verified.
 - Accessibility, security, performance, and device testing completed.
+

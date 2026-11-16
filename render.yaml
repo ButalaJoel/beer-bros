@@ -21,9 +21,10 @@ services:
       - key: NEON_DATABASE_URL
         sync: false
       - key: COPY_DATABASE_ON_START
-        sync: false
+        value: false
 
 databases:
   - name: beer-bros-db
     plan: free
     region: oregon
+

@@ -3,9 +3,9 @@ const { resolve } = require('node:path')
 const { Pool } = require('pg')
 require('dotenv').config()
 
-const connectionString = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL
+const connectionString = process.env.NEON_MIGRATION_DATABASE_URL || process.env.NEON_DATABASE_URL || process.env.DATABASE_URL
 if (!connectionString) {
-  console.error('DATABASE_URL is required to run migrations.')
+  console.error('NEON_MIGRATION_DATABASE_URL is required to run migrations.')
   process.exit(1)
 }
 
@@ -24,3 +24,4 @@ migrate().catch((error) => {
   console.error('Database migration failed:', error.message)
   process.exit(1)
 })
+
