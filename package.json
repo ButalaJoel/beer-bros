@@ -10,6 +10,7 @@
     "server:start": "node dist-server/index.js",
     "db:migrate": "node server/migrate.cjs",
     "db:copy": "node scripts/migrate-postgres.mjs",
+    "db:copy:on-start": "node scripts/migrate-on-start.mjs",
     "test:api-smoke": "node scripts/smoke-test-api.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview"

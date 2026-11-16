@@ -5,7 +5,7 @@ services:
     plan: free
     region: oregon
     buildCommand: npm ci --include=dev && npm run server:build && npm run db:migrate
-    startCommand: npm run server:start
+    startCommand: npm run db:copy:on-start && npm run server:start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
@@ -20,7 +20,7 @@ services:
           property: connectionString
       - key: NEON_DATABASE_URL
         sync: false
-      - key: NEON_MIGRATION_DATABASE_URL
+      - key: COPY_DATABASE_ON_START
         sync: false
 
 databases:

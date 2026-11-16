@@ -105,7 +105,7 @@ Give adults a welcoming place to share memorable social stories, follow people a
 ## 8. Current implementation gaps
 - Consent-based discovery actions/matching and match-gated message UI are implemented; deployed two-account round-trip is verified. Location queries, media upload, push notifications, and client Socket.IO delivery remain future work.
 - Account recovery, email verification, account deletion, editable profiles, and an in-product moderation/admin console.
-- The current database remains the temporary Render free preview instance. Neon Free is selected for the next staging database, but provisioning and cutover are pending; free-tier data still requires an off-site backup and is not production recovery-ready.
+- Neon PostgreSQL Free is provisioned as the staging destination but the data copy and runtime cutover are pending. Render PostgreSQL remains the active source and rollback database. Free-tier data still requires an off-site backup and is not production recovery-ready.
 - Rate limiting is not launch-grade: existing counters are in-memory and not shared across instances; endpoint-specific abuse limits and load/restart tests remain pending.
 - Complete data-protection operations are pending: data inventory/purpose and retention, export/deletion, backup/restore, provider encryption verification, access audit, credential rotation, and privacy/incident-response processes.
 - Session revocation, security-focused automated tests, independent security review, and log PII-redaction review remain pending.
