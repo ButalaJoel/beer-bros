@@ -69,7 +69,8 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 
 ## Phase 5 — Closed beta and launch readiness
 - [x] Implement allowlist-protected admin console for community announcements and report status workflow; add audit metadata schema migration.
-- [ ] Apply `docs/ADMIN_BETA_MIGRATION.sql` to Neon and configure Render `ADMIN_EMAILS` before using the console.
+- [x] Apply `docs/ADMIN_BETA_MIGRATION.sql` to Neon and configure Render `ADMIN_EMAILS`; Render redeploy succeeded, API health passed, announcements schema responded, and non-admin access was denied.
+- [ ] Confirm the allowlisted owner account sees the Admin tab after signing in.
 - [ ] Test on target Android/iOS browsers and low-bandwidth conditions.
 - [ ] Complete accessibility, privacy, security, legal, and performance reviews.
 - [x] Implement shared PostgreSQL counters for general traffic, auth, state-changing API requests, and Socket.IO messages; HMAC keys before storage and clean expired buckets.
