@@ -104,9 +104,10 @@ Give adults a welcoming place to share memorable social stories, follow people a
 
 ## 8. Current implementation gaps
 - Consent-based discovery actions/matching and match-gated message UI are implemented; deployed two-account round-trip is verified. Location queries, media upload, push notifications, and client Socket.IO delivery remain future work.
-- Account recovery, email verification, account deletion, editable profiles, and an in-product moderation/admin console.
+- Account recovery, email verification, account deletion, editable profiles, and moderation escalation workflows.
+- Admin console: server allowlist-controlled access; publish/archive community announcements; review reports and set open/reviewing/resolved/dismissed status; write metadata-only audit records. Announcement messaging is community information, not an unmarked ad channel.
 - Neon PostgreSQL Free is the active staging destination. The source-to-target copy and API read/write checks passed; the old Render database remains as a pre-cutover snapshot, not a synchronized rollback. Free-tier data still requires an off-site backup and is not production recovery-ready. The runtime now uses the SQL-created DML-only `beer_bros_app` role. Schema changes run manually through a GitHub Actions workflow with an owner secret isolated from the API runtime; configure that Actions secret before the next schema change.
-- Rate limiting is not launch-grade: existing counters are in-memory and not shared across instances; endpoint-specific abuse limits and load/restart tests remain pending.
+- Shared PostgreSQL-backed request limits are implemented; threshold/restart verification and tuning remain pending.
 - Complete data-protection operations are pending: data inventory/purpose and retention, export/deletion, backup/restore, provider encryption verification, access audit, credential rotation, and privacy/incident-response processes.
 - Session revocation, security-focused automated tests, independent security review, and log PII-redaction review remain pending.
 
@@ -119,4 +120,3 @@ Give adults a welcoming place to share memorable social stories, follow people a
 - Block/report/unmatch and operational moderation available.
 - PostgreSQL permissions, storage protections, auth flows, abuse controls, and deletion verified.
 - Accessibility, security, performance, and device testing completed.
-

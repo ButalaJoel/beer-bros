@@ -98,6 +98,30 @@ CREATE TABLE IF NOT EXISTS reports (
   CHECK (target_user_id IS NOT NULL OR target_story_id IS NOT NULL)
 );
 
+CREATE TABLE IF NOT EXISTS announcements (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  title varchar(120) NOT NULL,
+  body varchar(2000) NOT NULL,
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
+  starts_at timestamptz NOT NULL DEFAULT now(),
+  ends_at timestamptz,
+  created_by uuid NOT NULL REFERENCES users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (ends_at IS NULL OR ends_at > starts_at)
+);
+CREATE INDEX IF NOT EXISTS announcements_active_idx ON announcements (starts_at DESC) WHERE status='published';
+
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+  id bigserial PRIMARY KEY,
+  admin_user_id uuid NOT NULL REFERENCES users(id),
+  action text NOT NULL,
+  entity_type text NOT NULL,
+  entity_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS admin_audit_recent_idx ON admin_audit_log (created_at DESC);
+
 CREATE TABLE IF NOT EXISTS conversations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   participant_a uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -135,4 +159,3 @@ CREATE TABLE IF NOT EXISTS api_rate_limits (
   PRIMARY KEY (limiter, key_hash)
 );
 CREATE INDEX IF NOT EXISTS api_rate_limits_reset_idx ON api_rate_limits (reset_at);
-

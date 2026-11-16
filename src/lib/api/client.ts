@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-export type CurrentUser = { id: string; email: string; handle: string; displayName: string }
+export type CurrentUser = { id: string; email: string; handle: string; displayName: string; isAdmin: boolean }
 
 const base = import.meta.env.VITE_API_URL?.replace(/\/$/, '') ?? ''
 

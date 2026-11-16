@@ -68,6 +68,8 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - [ ] Validate CSRF/origin protections, session behavior, authorization boundaries, and rate limits with security-focused tests.
 
 ## Phase 5 — Closed beta and launch readiness
+- [x] Implement allowlist-protected admin console for community announcements and report status workflow; add audit metadata schema migration.
+- [ ] Apply `docs/ADMIN_BETA_MIGRATION.sql` to Neon and configure Render `ADMIN_EMAILS` before using the console.
 - [ ] Test on target Android/iOS browsers and low-bandwidth conditions.
 - [ ] Complete accessibility, privacy, security, legal, and performance reviews.
 - [x] Implement shared PostgreSQL counters for general traffic, auth, state-changing API requests, and Socket.IO messages; HMAC keys before storage and clean expired buckets.
@@ -96,4 +98,3 @@ Status key: **Done** = implemented and checked; **Pending** = not yet implemente
 - The Render API now uses the SQL-created DML-only `beer_bros_app` role; the old Render `DATABASE_URL` and copy-on-start flag have been removed from the service. `NEON_MIGRATION_DATABASE_URL` still needs to be added as a GitHub Actions secret before future schema changes. Do not treat Neon Free as a production backup or recovery plan.
 - Moderation operations, account recovery, account deletion/export, candidate pagination, photo upload, and launch-grade data-protection controls remain unimplemented.
 - Vercel + Render remains the app hosting target; Neon PostgreSQL Free is the selected staging database target. Do not call the free database production-ready.
-

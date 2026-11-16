@@ -5,6 +5,7 @@ import { pool } from './db.js'
 import { issueSession, requireAuth, sessionCookie } from './auth.js'
 
 export const router = Router()
+function isConfiguredAdmin(email: string) { return (process.env.ADMIN_EMAILS ?? '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean).includes(email.toLowerCase()) }
 const registerBody = z.object({
   email: z.string().email().max(254),
   password: z.string().min(12).max(128),
@@ -52,7 +53,7 @@ router.post('/auth/register', async (req, res, next) => {
       await client.query('INSERT INTO profiles (user_id, handle, display_name, bio, broad_area, discovery_enabled) VALUES ($1, $2, $3, $4, $5, $6)', [user.id, handle.toLowerCase(), displayName.trim(), bio, broadArea, discoveryEnabled])
       await client.query('COMMIT')
       res.cookie(sessionCookie.name, issueSession(user.id), sessionCookie.options)
-      return res.status(201).json({ user: { id: user.id, email: user.email, handle: handle.toLowerCase(), displayName: displayName.trim() } })
+      return res.status(201).json({ user: { id: user.id, email: user.email, handle: handle.toLowerCase(), displayName: displayName.trim(), isAdmin: isConfiguredAdmin(user.email) } })
     } catch (error) {
       await client.query('ROLLBACK')
       if ((error as { code?: string }).code === '23505') return res.status(409).json({ error: 'That email or username is already in use.' })
@@ -72,12 +73,30 @@ router.post('/auth/login', async (req, res, next) => {
     if (!result.rowCount || !(await bcrypt.compare(parsed.data.password, result.rows[0].password_hash))) return res.status(401).json({ error: 'Email or password is incorrect.' })
     const { id, email, handle, display_name } = result.rows[0]
     res.cookie(sessionCookie.name, issueSession(id), sessionCookie.options)
-    return res.json({ user: { id, email, handle, displayName: display_name } })
+    return res.json({ user: { id, email, handle, displayName: display_name, isAdmin: isConfiguredAdmin(email) } })
   } catch (error) { next(error) }
 })
 
 router.post('/auth/logout', (_req, res) => { res.clearCookie(sessionCookie.name, { ...sessionCookie.options, maxAge: undefined }); res.status(204).end() })
-router.get('/auth/me', requireAuth, (req, res) => res.json({ user: { id: req.user!.id, email: req.user!.email, handle: req.user!.handle, displayName: req.user!.display_name } }))
+router.get('/auth/me', requireAuth, (req, res) => res.json({ user: { id: req.user!.id, email: req.user!.email, handle: req.user!.handle, displayName: req.user!.display_name, isAdmin: req.user!.is_admin } }))
+
+const requireAdmin = (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+  if (!req.user?.is_admin) return res.status(403).json({ error: 'Administrator access required.' })
+  next()
+}
+const announcementBody = z.object({ title: z.string().trim().min(1).max(120), body: z.string().trim().min(1).max(2000), status: z.enum(['draft', 'published', 'archived']), startsAt: z.string().datetime().optional(), endsAt: z.string().datetime().nullable().optional() }).refine((item) => !item.endsAt || !item.startsAt || item.endsAt > item.startsAt)
+router.get('/announcements', requireAuth, async (_req, res, next) => {
+  try { const result = await pool.query(`SELECT id,title,body,starts_at,ends_at FROM announcements WHERE status='published' AND starts_at<=now() AND (ends_at IS NULL OR ends_at>now()) ORDER BY starts_at DESC LIMIT 5`); res.json({ announcements: result.rows }) } catch (error) { next(error) }
+})
+router.get('/admin/reports', requireAuth, requireAdmin, async (_req, res, next) => {
+  try { const result = await pool.query(`SELECT r.id,r.reason,r.details,r.status,r.created_at,r.target_user_id,r.target_story_id,p.handle AS target_handle FROM reports r LEFT JOIN profiles p ON p.user_id=r.target_user_id ORDER BY CASE r.status WHEN 'open' THEN 0 WHEN 'reviewing' THEN 1 ELSE 2 END,r.created_at DESC LIMIT 200`); res.json({ reports: result.rows }) } catch (error) { next(error) }
+})
+router.patch('/admin/reports/:reportId', requireAuth, requireAdmin, async (req, res, next) => {
+  try { const parsed=z.object({status:z.enum(['open','reviewing','resolved','dismissed'])}).safeParse(req.body); if(!parsed.success)return res.status(400).json({error:'Choose a valid report status.'}); const result=await pool.query(`UPDATE reports SET status=$1 WHERE id=$2 RETURNING id,status`,[parsed.data.status,req.params.reportId]); if(!result.rowCount)return res.status(404).json({error:'Report not found.'}); await pool.query(`INSERT INTO admin_audit_log(admin_user_id,action,entity_type,entity_id) VALUES($1,$2,'report',$3)`,[req.user!.id,`report:${parsed.data.status}`,req.params.reportId]); res.json({report:result.rows[0]}) } catch(error){next(error)}
+})
+router.get('/admin/announcements', requireAuth, requireAdmin, async (_req,res,next)=>{try{const result=await pool.query(`SELECT id,title,body,status,starts_at,ends_at,created_at FROM announcements ORDER BY created_at DESC LIMIT 100`);res.json({announcements:result.rows})}catch(error){next(error)}})
+router.post('/admin/announcements', requireAuth, requireAdmin, async (req,res,next)=>{try{const parsed=announcementBody.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Check the announcement title, message, and dates.'});const item=parsed.data;const result=await pool.query(`INSERT INTO announcements(title,body,status,starts_at,ends_at,created_by) VALUES($1,$2,$3,COALESCE($4::timestamptz,now()),$5,$6) RETURNING id,title,body,status,starts_at,ends_at,created_at`,[item.title,item.body,item.status,item.startsAt??null,item.endsAt??null,req.user!.id]);await pool.query(`INSERT INTO admin_audit_log(admin_user_id,action,entity_type,entity_id) VALUES($1,'announcement:create','announcement',$2)`,[req.user!.id,result.rows[0].id]);res.status(201).json({announcement:result.rows[0]})}catch(error){next(error)}})
+router.patch('/admin/announcements/:announcementId', requireAuth, requireAdmin, async (req,res,next)=>{try{const parsed=announcementBody.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Check the announcement title, message, and dates.'});const item=parsed.data;const result=await pool.query(`UPDATE announcements SET title=$1,body=$2,status=$3,starts_at=COALESCE($4::timestamptz,now()),ends_at=$5,updated_at=now() WHERE id=$6 RETURNING id,title,body,status,starts_at,ends_at,created_at`,[item.title,item.body,item.status,item.startsAt??null,item.endsAt??null,req.params.announcementId]);if(!result.rowCount)return res.status(404).json({error:'Announcement not found.'});await pool.query(`INSERT INTO admin_audit_log(admin_user_id,action,entity_type,entity_id) VALUES($1,'announcement:update','announcement',$2)`,[req.user!.id,req.params.announcementId]);res.json({announcement:result.rows[0]})}catch(error){next(error)}})
 
 router.get('/stories', requireAuth, async (req, res, next) => {
   try {

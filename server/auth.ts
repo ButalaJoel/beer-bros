@@ -39,7 +39,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       [claims.sub],
     )
     if (!result.rowCount) return res.status(401).json({ error: 'Account is unavailable.' })
-    req.user = result.rows[0]
+    const adminEmails = (process.env.ADMIN_EMAILS ?? '').split(',').map((email) => email.trim().toLowerCase()).filter(Boolean)
+    req.user = { ...result.rows[0], is_admin: adminEmails.includes(result.rows[0].email.toLowerCase()) }
     next()
   } catch {
     return res.status(401).json({ error: 'Session is invalid or expired.' })
