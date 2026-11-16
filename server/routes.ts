@@ -296,7 +296,7 @@ router.post('/discovery/actions', requireAuth, async (req, res, next) => {
          AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=$2) OR (b.blocker_id=$2 AND b.blocked_id=$1))`, [req.user!.id, targetUserId],
     )
     if (!eligibility.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'That profile is unavailable. Both members must have Discovery enabled.' }) }
-    const existingMatch = await client.query('SELECT 1 FROM matches WHERE user_a=LEAST($1,$2) AND user_b=GREATEST($1,$2)', [req.user!.id, targetUserId])
+    const existingMatch = await client.query('SELECT 1 FROM matches WHERE user_a=LEAST($1::uuid,$2::uuid) AND user_b=GREATEST($1::uuid,$2::uuid)', [req.user!.id, targetUserId])
     if (existingMatch.rowCount) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'You are already matched.' }) }
     await client.query(
       `INSERT INTO discovery_actions (actor_id,target_id,action) VALUES ($1,$2,$3)
@@ -307,9 +307,9 @@ router.post('/discovery/actions', requireAuth, async (req, res, next) => {
     if (action === 'interested') {
       const reciprocal = await client.query('SELECT 1 FROM discovery_actions WHERE actor_id=$1 AND target_id=$2 AND action=\'interested\'', [targetUserId, req.user!.id])
       if (reciprocal.rowCount) {
-        await client.query('INSERT INTO matches (user_a,user_b) VALUES (LEAST($1,$2),GREATEST($1,$2)) ON CONFLICT DO NOTHING', [req.user!.id, targetUserId])
+        await client.query('INSERT INTO matches (user_a,user_b) VALUES (LEAST($1::uuid,$2::uuid),GREATEST($1::uuid,$2::uuid)) ON CONFLICT DO NOTHING', [req.user!.id, targetUserId])
         const conversation = await client.query<{ id: string }>(
-          `INSERT INTO conversations (participant_a,participant_b) VALUES (LEAST($1,$2),GREATEST($1,$2))
+          `INSERT INTO conversations (participant_a,participant_b) VALUES (LEAST($1::uuid,$2::uuid),GREATEST($1::uuid,$2::uuid))
            ON CONFLICT (participant_a,participant_b) DO UPDATE SET participant_a=EXCLUDED.participant_a RETURNING id`, [req.user!.id, targetUserId],
         )
         matched = true
