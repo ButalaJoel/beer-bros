@@ -4,8 +4,45 @@ import { api, CurrentUser } from '../../lib/api/client'
 
 export default function AuthPanel({ onSignedIn }: { onSignedIn: (user: CurrentUser) => void }) {
   const [register, setRegister] = useState(false)
+  const [resetStep, setResetStep] = useState<'none' | 'email' | 'code'>('none')
+  const [resetEmail, setResetEmail] = useState('')
+  const [info, setInfo] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  async function requestCode(email: string) {
+    setError(''); setInfo(''); setBusy(true)
+    try { const result = await api<{message: string}>('/auth/password-reset/request', { method: 'POST', body: JSON.stringify({ email }) }); setResetEmail(email); setInfo(result.message + ' Check your spam folder too.'); setResetStep('code') }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not send a code. Try again.') }
+    finally { setBusy(false) }
+  }
+  async function submitReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const data = new FormData(event.currentTarget)
+    if (resetStep === 'email') return void requestCode(String(data.get('email') ?? '').trim())
+    setError(''); setBusy(true)
+    try { const result = await api<{user: CurrentUser}>('/auth/password-reset/confirm', { method: 'POST', body: JSON.stringify({ email: resetEmail, code: String(data.get('code') ?? '').trim(), password: String(data.get('password') ?? '') }) }); onSignedIn(result.user) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not reset your password.') }
+    finally { setBusy(false) }
+  }
+  const backToLogin = () => { setResetStep('none'); setError(''); setInfo('') }
+  if (resetStep !== 'none') return <main className="x-auth">
+    <section className="x-auth-card">
+      <span className="x-auth-logo"><Beer size={40} strokeWidth={2.2} /></span>
+      <h1>{resetStep === 'email' ? 'Find your account' : 'Check your email'}</h1>
+      <p className="x-auth-lead">{resetStep === 'email' ? 'Enter the email you signed up with and we’ll send you a 6-digit code.' : info}</p>
+      <form onSubmit={submitReset} className="x-auth-form" key={resetStep}>
+        {resetStep === 'email'
+          ? <input name="email" type="email" autoComplete="email" required maxLength={254} placeholder="Email" aria-label="Email" defaultValue={resetEmail} />
+          : <>
+            <input name="code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} placeholder="6-digit code" aria-label="6-digit code" className="x-auth-code" />
+            <input name="password" type="password" autoComplete="new-password" required minLength={8} maxLength={128} placeholder="New password (8+ characters)" aria-label="New password" />
+          </>}
+        {error && <p role="alert" className="x-auth-error">{error}</p>}
+        <button className="x-auth-submit" disabled={busy}>{busy ? 'Please wait…' : resetStep === 'email' ? 'Send code' : 'Reset password and log in'}</button>
+      </form>
+      {resetStep === 'code' && <p className="x-auth-switch">No email? <button disabled={busy} onClick={() => void requestCode(resetEmail)}>Send a new code</button></p>}
+      <p className="x-auth-switch"><button onClick={backToLogin}>Back to log in</button></p>
+    </section>
+  </main>
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(''); setBusy(true)
     const data = new FormData(event.currentTarget)
@@ -34,6 +71,7 @@ export default function AuthPanel({ onSignedIn }: { onSignedIn: (user: CurrentUs
         </>}
         {error && <p role="alert" className="x-auth-error">{error}</p>}
         <button className="x-auth-submit" disabled={busy}>{busy ? 'Please wait…' : register ? 'Sign up' : 'Log in'}</button>
+        {!register && <button type="button" className="x-auth-forgot" onClick={() => { setError(''); setResetStep('email') }}>Forgot password?</button>}
       </form>
       <p className="x-auth-switch">{register ? 'Have an account already?' : 'Don’t have an account?'} <button onClick={() => { setError(''); setRegister(!register) }}>{register ? 'Log in' : 'Sign up'}</button></p>
       <p className="x-auth-foot"><ShieldCheck size={14} /> Adults 18+ · Drink responsibly · Your exact location is never shown</p>

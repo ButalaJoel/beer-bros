@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { pool } from './db.js'
 import { getSessionCookieName, getSessionSecret } from './auth.js'
 import { router } from './routes.js'
+import { passwordResetRouter } from './password-reset.js'
 import { PostgresRateLimitStore, startRateLimitCleanup } from './rate-limit-store.js'
 
 const app = express()
@@ -48,6 +49,7 @@ app.use('/api', (req, res, next) => {
 })
 app.use('/api/auth', authLimiter)
 app.use('/api', (req, res, next) => ['POST', 'PUT', 'DELETE'].includes(req.method) ? writeLimiter(req, res, next) : next())
+app.use('/api', passwordResetRouter)
 app.use('/api', router)
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }))
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
