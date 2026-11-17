@@ -8,20 +8,32 @@ export const router = Router()
 function isConfiguredAdmin(email: string) { return (process.env.ADMIN_EMAILS ?? '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean).includes(email.toLowerCase()) }
 const registerBody = z.object({
   email: z.string().email().max(254),
-  password: z.string().min(12).max(128),
-  handle: z.string().min(3).max(24).regex(/^[a-zA-Z0-9_]+$/),
+  password: z.string().min(8).max(128),
+  handle: z.string().min(3).max(24).regex(/^[a-zA-Z0-9_]+$/).optional(),
   displayName: z.string().trim().min(1).max(60),
   bio: z.string().trim().max(300).default(''),
   broadArea: z.string().trim().max(60).default(''),
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  acceptedResponsibleUse: z.literal(true),
+  acceptedResponsibleUse: z.literal(true).default(true),
   discoveryEnabled: z.boolean().default(false),
 })
 const loginBody = z.object({ email: z.string().email().max(254), password: z.string().min(1).max(128) })
-const storyBody = z.object({ body: z.string().trim().min(1).max(500), topicTags: z.array(z.string().trim().min(1).max(32)).max(5).optional() })
+const MAX_IMAGE_DATA_URL = 1_400_000
+const imageDataUrl = z.string().max(MAX_IMAGE_DATA_URL).regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/)
+const storyBody = z.object({ body: z.string().trim().min(1).max(500), topicTags: z.array(z.string().trim().min(1).max(32)).max(5).optional(), image: imageDataUrl.optional() })
 const commentBody = z.object({ body: z.string().trim().min(1).max(500) })
 const messageBody = z.object({ body: z.string().trim().min(1).max(2000) })
 const discoveryActionBody = z.object({ targetUserId: z.string().uuid(), action: z.enum(['pass', 'interested']) })
+
+async function generateHandle(displayName: string) {
+  const stem = displayName.normalize('NFKD').replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 15) || 'beerbro'
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const candidate = `${stem}${attempt === 0 && stem.length >= 3 ? '' : Math.floor(1000 + Math.random() * 9000)}`
+    const taken = await pool.query('SELECT 1 FROM profiles WHERE lower(handle)=$1', [candidate])
+    if (!taken.rowCount) return candidate
+  }
+  return `${stem.slice(0, 12)}${Date.now().toString(36).slice(-8)}`
+}
 
 function isAdult(dateOfBirth: string) {
   const date = new Date(`${dateOfBirth}T00:00:00.000Z`)
@@ -39,8 +51,9 @@ router.post('/auth/register', async (req, res, next) => {
   try {
     const parsed = registerBody.safeParse(req.body)
     if (!parsed.success) return res.status(400).json({ error: 'Check the account details and try again.' })
-    const { email, password, handle, displayName, bio, broadArea, dateOfBirth, discoveryEnabled } = parsed.data
+    const { email, password, displayName, bio, broadArea, dateOfBirth, discoveryEnabled } = parsed.data
     if (!isAdult(dateOfBirth)) return res.status(403).json({ error: 'Beer BROS is only available to adults aged 18 and over.' })
+    const handle = parsed.data.handle ?? await generateHandle(displayName)
     const passwordHash = await bcrypt.hash(password, 12)
     const client = await pool.connect()
     try {
@@ -56,7 +69,7 @@ router.post('/auth/register', async (req, res, next) => {
       return res.status(201).json({ user: { id: user.id, email: user.email, handle: handle.toLowerCase(), displayName: displayName.trim(), isAdmin: isConfiguredAdmin(user.email) } })
     } catch (error) {
       await client.query('ROLLBACK')
-      if ((error as { code?: string }).code === '23505') return res.status(409).json({ error: 'That email or username is already in use.' })
+      if ((error as { code?: string }).code === '23505') return res.status(409).json({ error: 'An account with that email already exists. Try logging in.' })
       throw error
     } finally { client.release() }
   } catch (error) { next(error) }
@@ -102,7 +115,7 @@ router.get('/stories', requireAuth, async (req, res, next) => {
   try {
     const followingOnly = req.query.feed === 'following'
     const result = await pool.query(
-      `SELECT s.id, s.author_id, s.body, s.topic_tags, s.created_at, p.handle, p.display_name, p.avatar_url, p.broad_area,
+      `SELECT s.id, s.author_id, s.body, s.topic_tags, s.created_at, (s.image_url IS NOT NULL) AS has_image, p.handle, p.display_name, p.avatar_url, p.broad_area,
         (SELECT count(*)::int FROM story_likes l WHERE l.story_id=s.id) AS like_count,
         (SELECT count(*)::int FROM story_comments c WHERE c.story_id=s.id AND c.deleted_at IS NULL) AS reply_count,
         EXISTS (SELECT 1 FROM story_likes mine WHERE mine.story_id=s.id AND mine.user_id=$1) AS liked_by_me,
@@ -121,12 +134,27 @@ router.get('/stories', requireAuth, async (req, res, next) => {
 router.post('/stories', requireAuth, async (req, res, next) => {
   try {
     const parsed = storyBody.safeParse(req.body)
-    if (!parsed.success) return res.status(400).json({ error: 'Stories must contain 1–500 characters and up to five short topics.' })
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues.some((issue) => issue.path[0] === 'image') ? 'That photo could not be uploaded. Use a JPG, PNG or WebP image.' : 'Posts must contain 1–500 characters and up to five short topics.' })
     const result = await pool.query(
-      'INSERT INTO stories (author_id, body, topic_tags) VALUES ($1, $2, $3) RETURNING id, body, topic_tags, created_at',
-      [req.user!.id, parsed.data.body, parsed.data.topicTags ?? []],
+      'INSERT INTO stories (author_id, body, topic_tags, image_url) VALUES ($1, $2, $3, $4) RETURNING id, body, topic_tags, created_at, (image_url IS NOT NULL) AS has_image',
+      [req.user!.id, parsed.data.body, parsed.data.topicTags ?? [], parsed.data.image ?? null],
     )
     return res.status(201).json({ story: result.rows[0] })
+  } catch (error) { next(error) }
+})
+
+router.get('/stories/:storyId/image', requireAuth, async (req, res, next) => {
+  try {
+    if (!z.string().uuid().safeParse(req.params.storyId).success) return res.status(404).end()
+    const result = await pool.query(
+      `SELECT s.image_url FROM stories s WHERE s.id=$1 AND s.deleted_at IS NULL AND s.image_url IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=s.author_id) OR (b.blocker_id=s.author_id AND b.blocked_id=$2))`,
+      [req.params.storyId, req.user!.id],
+    )
+    const match = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(result.rows[0]?.image_url ?? '')
+    if (!match) return res.status(404).end()
+    res.set({ 'Content-Type': match[1], 'Cache-Control': 'private, max-age=604800, immutable', 'Cross-Origin-Resource-Policy': 'same-site', 'X-Content-Type-Options': 'nosniff' })
+    return res.send(Buffer.from(match[2], 'base64'))
   } catch (error) { next(error) }
 })
 
@@ -216,7 +244,7 @@ router.get('/search', requireAuth, async (req, res, next) => {
          ORDER BY p.display_name LIMIT 20`, [req.user!.id, pattern],
       ),
       pool.query(
-        `SELECT s.id, s.author_id, s.body, s.topic_tags, s.created_at, p.handle, p.display_name, p.avatar_url, p.broad_area,
+        `SELECT s.id, s.author_id, s.body, s.topic_tags, s.created_at, (s.image_url IS NOT NULL) AS has_image, p.handle, p.display_name, p.avatar_url, p.broad_area,
            (SELECT count(*)::int FROM story_likes l WHERE l.story_id=s.id) AS like_count,
            (SELECT count(*)::int FROM story_comments c WHERE c.story_id=s.id AND c.deleted_at IS NULL) AS reply_count,
            EXISTS (SELECT 1 FROM story_likes mine WHERE mine.story_id=s.id AND mine.user_id=$1) AS liked_by_me,

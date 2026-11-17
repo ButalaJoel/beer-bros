@@ -34,7 +34,9 @@ app.disable('x-powered-by')
 app.set('trust proxy', 1)
 app.use(helmet())
 app.use(cors(corsOptions))
-app.use(express.json({ limit: '32kb' }))
+const photoPostJson = express.json({ limit: '1600kb' })
+const defaultJson = express.json({ limit: '32kb' })
+app.use((req, res, next) => (req.method === 'POST' && req.path === '/api/stories' ? photoPostJson : defaultJson)(req, res, next))
 app.use(cookieParser())
 app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false, store: new PostgresRateLimitStore('general') }))
 
@@ -49,6 +51,7 @@ app.use('/api', (req, res, next) => ['POST', 'PUT', 'DELETE'].includes(req.metho
 app.use('/api', router)
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }))
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (typeof error === 'object' && error !== null && (error as { type?: string }).type === 'entity.too.large') return res.status(413).json({ error: 'That photo is too large. Try a smaller one.' })
   console.error('API request failed:', error instanceof Error ? error.message : 'Unknown error')
   return res.status(500).json({ error: 'Something went wrong. Please try again.' })
 })
@@ -123,4 +126,3 @@ async function shutdown() {
 }
 process.on('SIGTERM', () => { void shutdown() })
 process.on('SIGINT', () => { void shutdown() })
-

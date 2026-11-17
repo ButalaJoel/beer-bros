@@ -1,17 +1,20 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react'
-import { Check, Heart, MessageCircle, Search, Send, ShieldCheck, UserPlus } from 'lucide-react'
-import { api } from '../../lib/api/client'
+import { ChangeEvent, FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowLeft, Check, Heart, ImagePlus, MessageCircle, Search, Send, Share, ShieldCheck, UserPlus, X } from 'lucide-react'
+import { api, CurrentUser } from '../../lib/api/client'
+import { compressPhoto } from '../../lib/image'
+import Avatar from '../../components/Avatar'
 
-type StoryRow = { id: string; body: string; topic_tags: string[]; created_at: string; handle: string; display_name: string; avatar_url?: string | null; broad_area?: string | null; like_count: number; reply_count: number; liked_by_me: boolean; author_id: string; followed_by_me: boolean; own_story?: boolean }
+type StoryRow = { id: string; body: string; topic_tags: string[]; created_at: string; has_image?: boolean; handle: string; display_name: string; avatar_url?: string | null; broad_area?: string | null; like_count: number; reply_count: number; liked_by_me: boolean; author_id: string; followed_by_me: boolean; own_story?: boolean }
 type Person = { id: string; handle: string; display_name: string; bio: string; avatar_url?: string | null; broad_area?: string | null; followed_by_me: boolean }
 type Comment = { id: string; body: string; handle: string; display_name: string; created_at: string }
 type Thread = { id: string; other_user_id: string; handle: string; display_name: string; avatar_url?: string | null; last_message?: string | null }
 type Message = { id: string; sender_id: string; body: string; created_at: string }
-type FeedProps = { mode: 'Home' | 'Search' | 'Messages'; query: string; currentUserId: string }
-const avatarFallback = 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=100&h=100&q=80'
-const timeAgo = (value: string) => { const mins = Math.max(1, Math.floor((Date.now() - new Date(value).getTime()) / 60000)); return mins < 60 ? `${mins}m` : mins < 1440 ? `${Math.floor(mins / 60)}h` : `${Math.floor(mins / 1440)}d` }
+type FeedProps = { mode: 'Home' | 'Search' | 'Messages'; query: string; onQueryChange: (value: string) => void; currentUser: CurrentUser; composeSignal: number; announcements?: ReactNode }
+const apiBase = import.meta.env.VITE_API_URL?.replace(/\/$/, '') ?? ''
+const timeAgo = (value: string) => { const mins = Math.max(1, Math.floor((Date.now() - new Date(value).getTime()) / 60000)); return mins < 60 ? `${mins}m` : mins < 1440 ? `${Math.floor(mins / 60)}h` : mins < 10080 ? `${Math.floor(mins / 1440)}d` : new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) }
+const errorText = (reason: unknown, fallback: string) => reason instanceof Error ? reason.message : fallback
 
-export default function Feed({ mode, query, currentUserId }: FeedProps) {
+export default function Feed({ mode, query, onQueryChange, currentUser, composeSignal, announcements }: FeedProps) {
   const [rows, setRows] = useState<StoryRow[]>([]); const [people, setPeople] = useState<Person[]>([])
   const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [notice, setNotice] = useState(''); const [refresh, setRefresh] = useState(0)
   const [filter, setFilter] = useState<'for-you' | 'following'>('for-you')
@@ -19,40 +22,118 @@ export default function Feed({ mode, query, currentUserId }: FeedProps) {
     if (mode === 'Messages') return
     if (mode === 'Search') { if (!query.trim()) { setRows([]); setPeople([]) } else { const result = await api<{stories: StoryRow[]; people: Person[]}>(`/search?q=${encodeURIComponent(query.trim())}`); setRows(result.stories); setPeople(result.people) } }
     else { const result = await api<{stories: StoryRow[]}>(`/stories${filter === 'following' ? '?feed=following' : ''}`); setRows(result.stories) }
-  } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load content.') } finally { setLoading(false) } }, [filter, mode, query, refresh])
-  useEffect(() => { void load() }, [load])
-  if (mode === 'Messages') return <Messages onError={setError} error={error} currentUserId={currentUserId}/>
-  const publish = async (text: string) => { try { await api('/stories', { method: 'POST', body: JSON.stringify({ body: text }) }); setNotice('Your story is now posted.'); setRefresh((n) => n + 1) } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Could not post story.') } }
-  const follow = async (userId: string, isFollowing: boolean) => { try { await api(`/users/${userId}/follow`, { method: isFollowing ? 'DELETE' : 'POST' }); setPeople((items) => items.map((person) => person.id === userId ? { ...person, followed_by_me: !isFollowing } : person)); setRows((items) => items.map((story) => story.author_id === userId ? { ...story, followed_by_me: !isFollowing } : story)); setNotice(isFollowing ? 'Account unfollowed.' : 'You are now following this account.') } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Could not update follow.') } }
-  const toggleLike = async (story: StoryRow) => { const liked = !story.liked_by_me; setRows((items) => items.map((item) => item.id === story.id ? { ...item, liked_by_me: liked, like_count: item.like_count + (liked ? 1 : -1) } : item)); try { await api(`/stories/${story.id}/likes`, { method: liked ? 'POST' : 'DELETE' }) } catch (reason) { setRows((items) => items.map((item) => item.id === story.id ? story : item)); setNotice(reason instanceof Error ? reason.message : 'Could not update like.') } }
-  return <div className="feed-column">
-    {mode === 'Search' ? <div className="search-results-heading"><div><div className="eyebrow"><span className="eyebrow-line"/> SEARCH THE COMMUNITY</div><h1>Find your <em>people.</em></h1><p>{query ? `Real members and stories matching “${query}”` : 'Search community members and their stories. Match first to message.'}</p></div><div className="search-count"><Search size={15}/>{rows.length} stories · {people.length} people</div></div> : <div className="feed-welcome"><div><div className="eyebrow"><span className="eyebrow-line"/> YOUR COMMUNITY</div><h1>Your stories. <em>Your people.</em></h1><p>A little corner for the nights and people you’ll remember.</p></div></div>}
-    {mode === 'Home' && <Composer onPublish={publish}/>}
-    {mode === 'Home' && <div className="feed-filter">{(['for-you','following'] as const).map((item) => <button key={item} className={filter === item ? 'selected' : ''} onClick={() => setFilter(item)}>{item === 'for-you' ? 'Recent' : 'Following'}</button>)}<span className="feed-filter-label">Saved to your account</span></div>}
-    {mode === 'Search' && people.map((person) => <div className="person-result" key={person.id}><img src={person.avatar_url || avatarFallback} alt=""/><div><strong>{person.display_name}</strong><span>@{person.handle}{person.broad_area ? ` · ${person.broad_area}` : ''}</span><small>{person.bio}</small></div><button className="follow-button" onClick={() => void follow(person.id, person.followed_by_me)}>{person.followed_by_me ? <><Check size={14}/> Following</> : <><UserPlus size={14}/> Follow</>}</button></div>)}
-    {error && <div role="alert" className="feed-error"><p>{error}</p><button onClick={() => setRefresh((n) => n + 1)}>Try again</button></div>}
-    {loading && <div className="feed-loading">Loading your community…</div>}
-    {!loading && !error && rows.map((story) => <StoryCard key={story.id} story={story} onLike={() => void toggleLike(story)} onFollow={follow}/>) }
-    {!loading && !error && rows.length === 0 && <div className="feed-empty"><Search size={22}/><h2>{mode === 'Search' && query ? 'No matches yet' : filter === 'following' ? 'Follow people to fill this feed' : 'The first story is yours'}</h2><p>{mode === 'Search' ? 'Try another name, topic or phrase.' : 'Stories shared by real Beer BROS members will appear here.'}</p></div>}
-    {notice && <div className="feed-notice" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss">×</button></div>}
+  } catch (reason) { setError(errorText(reason, 'Could not load posts.')) } finally { setLoading(false) } }, [filter, mode, query, refresh])
+  useEffect(() => { const timer = window.setTimeout(() => void load(), mode === 'Search' ? 300 : 0); return () => window.clearTimeout(timer) }, [load, mode])
+  useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 4000); return () => window.clearTimeout(timer) }, [notice])
+  if (mode === 'Messages') return <Messages currentUserId={currentUser.id} />
+
+  const publish = async (text: string, image?: string) => { await api('/stories', { method: 'POST', body: JSON.stringify({ body: text, image }) }); setNotice('Your post was sent.'); setFilter('for-you'); setRefresh((n) => n + 1) }
+  const follow = async (userId: string, isFollowing: boolean) => { try { await api(`/users/${userId}/follow`, { method: isFollowing ? 'DELETE' : 'POST' }); setPeople((items) => items.map((person) => person.id === userId ? { ...person, followed_by_me: !isFollowing } : person)); setRows((items) => items.map((story) => story.author_id === userId ? { ...story, followed_by_me: !isFollowing } : story)) } catch (reason) { setNotice(errorText(reason, 'Could not update follow.')) } }
+  const toggleLike = async (story: StoryRow) => { const liked = !story.liked_by_me; setRows((items) => items.map((item) => item.id === story.id ? { ...item, liked_by_me: liked, like_count: item.like_count + (liked ? 1 : -1) } : item)); try { await api(`/stories/${story.id}/likes`, { method: liked ? 'POST' : 'DELETE' }) } catch (reason) { setRows((items) => items.map((item) => item.id === story.id ? story : item)); setNotice(errorText(reason, 'Could not update like.')) } }
+
+  return <div className="x-feed">
+    {mode === 'Search'
+      ? <div className="x-page-header x-search-header"><label className="x-search"><Search size={17} /><input autoFocus value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Search people and posts" aria-label="Search people and posts" />{query && <button type="button" aria-label="Clear search" onClick={() => onQueryChange('')}><X size={14} /></button>}</label></div>
+      : <div className="x-page-header x-tabs-header"><h1 className="x-mobile-hidden">Home</h1><div className="x-tabs" role="tablist">{(['for-you', 'following'] as const).map((item) => <button key={item} role="tab" aria-selected={filter === item} className={filter === item ? 'selected' : ''} onClick={() => setFilter(item)}><span>{item === 'for-you' ? 'For you' : 'Following'}</span></button>)}</div></div>}
+    {mode === 'Home' && announcements}
+    {mode === 'Home' && <Composer user={currentUser} onPublish={publish} focusSignal={composeSignal} />}
+    {mode === 'Search' && people.length > 0 && <section className="x-people"><h2>People</h2>{people.map((person) => <div className="x-person" key={person.id}><Avatar name={person.display_name} url={person.avatar_url} /><div className="x-person-text"><strong>{person.display_name}</strong><span>@{person.handle}{person.broad_area ? ` · ${person.broad_area}` : ''}</span>{person.bio && <p>{person.bio}</p>}</div><FollowButton following={person.followed_by_me} onClick={() => void follow(person.id, person.followed_by_me)} /></div>)}</section>}
+    {mode === 'Search' && rows.length > 0 && <h2 className="x-section-title">Posts</h2>}
+    {error && <div role="alert" className="x-error"><p>{error}</p><button onClick={() => setRefresh((n) => n + 1)}>Retry</button></div>}
+    {loading && rows.length === 0 && <div className="x-loading"><span className="x-spinner" /></div>}
+    {!error && rows.map((story) => <Post key={story.id} story={story} onLike={() => void toggleLike(story)} onFollow={follow} />)}
+    {!loading && !error && rows.length === 0 && !(mode === 'Search' && people.length > 0) && <div className="x-empty">
+      <h2>{mode === 'Search' ? (query ? `No results for “${query}”` : 'Search Beer BROS') : filter === 'following' ? 'Nobody to show yet' : 'No posts yet'}</h2>
+      <p>{mode === 'Search' ? (query ? 'Try a different name, bar or word.' : 'Find people, bars and posts from the community.') : filter === 'following' ? 'Follow people and their posts will show up here.' : 'Be the first — share where you’re drinking tonight.'}</p>
+    </div>}
+    {notice && <div className="x-toast" role="status">{notice}</div>}
   </div>
 }
 
-function StoryCard({ story, onLike, onFollow }: { story: StoryRow; onLike: () => void; onFollow: (id: string, following: boolean) => void }) {
-  const [expanded, setExpanded] = useState(false); const [comments, setComments] = useState<Comment[]>([]); const [text, setText] = useState(''); const [message, setMessage] = useState('')
-  async function loadComments() { const next = !expanded; setExpanded(next); if (next) try { const result = await api<{comments: Comment[]}>(`/stories/${story.id}/comments`); setComments(result.comments) } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not load replies.') } }
-  async function reply(event: FormEvent) { event.preventDefault(); if (!text.trim()) return; try { await api(`/stories/${story.id}/comments`, { method: 'POST', body: JSON.stringify({ body: text.trim() }) }); setComments((items) => [...items, { id: crypto.randomUUID(), body: text.trim(), handle: 'you', display_name: 'You', created_at: new Date().toISOString() }]); setText(''); setMessage('Reply posted.') } catch (reason) { setMessage(reason instanceof Error ? reason.message : 'Could not post reply.') } }
-  return <article className="story-post"><div className="post-author"><img src={story.avatar_url || avatarFallback} alt=""/><div className="author-lines"><strong>{story.display_name}</strong><span>@{story.handle}<i> · </i>{story.broad_area || 'Uganda'}<i> · </i>{timeAgo(story.created_at)}</span></div>{!story.own_story && <button className="follow-button" onClick={() => onFollow(story.author_id, story.followed_by_me)}>{story.followed_by_me ? <><Check size={14}/> Following</> : <><UserPlus size={14}/> Follow</>}</button>}</div><p className="post-copy">{story.body}</p><div className="post-tags">{story.topic_tags?.map((tag) => <span key={tag}>#{tag}</span>)}</div><div className="post-actions"><button className={story.liked_by_me ? 'liked' : ''} onClick={onLike} aria-label={story.liked_by_me ? 'Unlike story' : 'Like story'}><Heart size={17} fill={story.liked_by_me ? 'currentColor' : 'none'}/>{story.like_count}</button><button onClick={() => void loadComments()}><MessageCircle size={17}/>{story.reply_count}<span>Replies</span></button><button aria-label="Copy story link" onClick={() => { void navigator.clipboard?.writeText(location.href); setMessage('Link copied.') }}><Send size={16}/><span>Share</span></button></div>{expanded && <><div className="comment-list">{comments.map((comment) => <p key={comment.id}><strong>{comment.display_name}</strong> {comment.body}</p>)}</div><form className="reply-box" onSubmit={(event) => void reply(event)}><input value={text} onChange={(event) => setText(event.target.value)} aria-label="Write a reply" placeholder="Add something kind to the conversation…" maxLength={500}/><button aria-label="Send reply"><Send size={15}/></button></form></>}{message && <small className="inline-status" role="status">{message}</small>}</article>
+function FollowButton({ following, onClick }: { following: boolean; onClick: () => void }) {
+  return <button className={`x-follow ${following ? 'following' : ''}`} onClick={onClick}>{following ? <><Check size={14} /> Following</> : <><UserPlus size={14} /> Follow</>}</button>
 }
 
-function Composer({ onPublish }: { onPublish: (text: string) => Promise<void> }) { const [text, setText] = useState(''); const [busy, setBusy] = useState(false); return <form className="composer" onSubmit={async (event) => { event.preventDefault(); if (!text.trim()) return; setBusy(true); await onPublish(text.trim()); setText(''); setBusy(false) }}><div className="composer-top"><span className="current-avatar">✳</span><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="What’s a night you’ll always remember?" aria-label="Write your story" maxLength={500}/></div><div className="composer-bottom"><span><ShieldCheck size={16}/> Respectful stories · {text.length}/500</span><button type="submit" disabled={!text.trim() || busy}><Send size={14}/>{busy ? 'Posting…' : 'Share story'}</button></div></form> }
+function Post({ story, onLike, onFollow }: { story: StoryRow; onLike: () => void; onFollow: (id: string, following: boolean) => void }) {
+  const [expanded, setExpanded] = useState(false); const [comments, setComments] = useState<Comment[]>([]); const [text, setText] = useState(''); const [message, setMessage] = useState(''); const [replyCount, setReplyCount] = useState(story.reply_count)
+  const [imageOpen, setImageOpen] = useState(false)
+  async function toggleReplies() { const next = !expanded; setExpanded(next); if (next) try { const result = await api<{comments: Comment[]}>(`/stories/${story.id}/comments`); setComments(result.comments) } catch (reason) { setMessage(errorText(reason, 'Could not load replies.')) } }
+  async function reply(event: FormEvent) { event.preventDefault(); const body = text.trim(); if (!body) return; try { await api(`/stories/${story.id}/comments`, { method: 'POST', body: JSON.stringify({ body }) }); setComments((items) => [...items, { id: crypto.randomUUID(), body, handle: 'you', display_name: 'You', created_at: new Date().toISOString() }]); setReplyCount((n) => n + 1); setText(''); setMessage('') } catch (reason) { setMessage(errorText(reason, 'Could not post reply.')) } }
+  async function share() { const url = location.origin; try { if (navigator.share) await navigator.share({ title: `${story.display_name} on Beer BROS`, text: story.body, url }); else { await navigator.clipboard.writeText(url); setMessage('Link copied.') } } catch { /* share sheet dismissed */ } }
+  const imageSrc = `${apiBase}/api/stories/${story.id}/image`
+  return <article className="x-post">
+    <Avatar name={story.display_name} url={story.avatar_url} />
+    <div className="x-post-body">
+      <div className="x-post-head"><strong>{story.display_name}</strong><span className="x-muted">@{story.handle}</span>{story.broad_area && <span className="x-muted">· {story.broad_area}</span>}<span className="x-muted">· {timeAgo(story.created_at)}</span>{!story.own_story && !story.followed_by_me && <button className="x-follow-inline" onClick={() => onFollow(story.author_id, false)}>Follow</button>}</div>
+      <p className="x-post-text">{story.body}</p>
+      {story.topic_tags?.length > 0 && <div className="x-tags">{story.topic_tags.map((tag) => <span key={tag}>#{tag}</span>)}</div>}
+      {story.has_image && <button className="x-post-media" onClick={() => setImageOpen(true)} aria-label="Open photo"><img src={imageSrc} alt={`Photo posted by ${story.display_name}`} loading="lazy" /></button>}
+      <div className="x-actions">
+        <button className="x-action reply" onClick={() => void toggleReplies()} aria-label="Replies"><span className="x-action-icon"><MessageCircle size={18} /></span>{replyCount > 0 && replyCount}</button>
+        <button className={`x-action like ${story.liked_by_me ? 'on' : ''}`} onClick={onLike} aria-label={story.liked_by_me ? 'Unlike' : 'Like'}><span className="x-action-icon"><Heart size={18} fill={story.liked_by_me ? 'currentColor' : 'none'} /></span>{story.like_count > 0 && story.like_count}</button>
+        <button className="x-action share" onClick={() => void share()} aria-label="Share"><span className="x-action-icon"><Share size={18} /></span></button>
+      </div>
+      {expanded && <div className="x-replies">
+        {comments.map((comment) => <div className="x-reply" key={comment.id}><strong>{comment.display_name}</strong> <span className="x-muted">@{comment.handle}</span><p>{comment.body}</p></div>)}
+        <form className="x-reply-form" onSubmit={(event) => void reply(event)}><input value={text} onChange={(event) => setText(event.target.value)} aria-label="Write a reply" placeholder="Post your reply" maxLength={500} /><button disabled={!text.trim()}>Reply</button></form>
+      </div>}
+      {message && <small className="x-inline-status" role="status">{message}</small>}
+    </div>
+    {imageOpen && <div className="x-lightbox" role="dialog" aria-label="Photo" onClick={() => setImageOpen(false)}><button aria-label="Close photo"><X size={22} /></button><img src={imageSrc} alt={`Photo posted by ${story.display_name}`} /></div>}
+  </article>
+}
 
-export function FeedRail() { return <aside className="feed-rail"><section className="rail-card"><div className="rail-heading"><h3>Start with search</h3></div><p className="rail-copy">Find real members, follow their accounts and join the conversation.</p></section><section className="community-card"><span><ShieldCheck size={16}/></span><div><h3>Good company, good care.</h3><p>Share stories with respect. Drink responsibly, meet publicly, and look out for your people.</p><a href="#community-guidelines">Community guidelines ↗</a></div></section><div className="rail-footer"><span>© 2026 Beer BROS</span><span>Adults 18+ · Be kind out there</span></div></aside> }
+function Composer({ user, onPublish, focusSignal }: { user: CurrentUser; onPublish: (text: string, image?: string) => Promise<void>; focusSignal: number }) {
+  const [text, setText] = useState(''); const [image, setImage] = useState<string>(); const [busy, setBusy] = useState(false); const [preparing, setPreparing] = useState(false); const [error, setError] = useState('')
+  const fileInput = useRef<HTMLInputElement>(null); const textArea = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => { if (focusSignal) { textArea.current?.focus(); textArea.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) } }, [focusSignal])
+  useEffect(() => { const el = textArea.current; if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` } }, [text])
+  async function pick(event: ChangeEvent<HTMLInputElement>) { const file = event.target.files?.[0]; event.target.value = ''; if (!file) return; setError(''); setPreparing(true); try { setImage(await compressPhoto(file)) } catch (reason) { setError(errorText(reason, 'Could not use that photo.')) } finally { setPreparing(false) } }
+  async function submit(event: FormEvent) { event.preventDefault(); if (!text.trim() || busy) return; setBusy(true); setError(''); try { await onPublish(text.trim(), image); setText(''); setImage(undefined) } catch (reason) { setError(errorText(reason, 'Could not send your post.')) } finally { setBusy(false) } }
+  const remaining = 500 - text.length
+  return <form className="x-composer" onSubmit={(event) => void submit(event)}>
+    <Avatar name={user.displayName} />
+    <div className="x-composer-main">
+      <textarea ref={textArea} rows={2} value={text} onChange={(event) => setText(event.target.value)} placeholder="Where are you drinking? Any vibe tonight?" aria-label="Write a post" maxLength={500} />
+      {preparing && <div className="x-composer-preparing">Preparing photo…</div>}
+      {image && <div className="x-composer-media"><img src={image} alt="Selected photo preview" /><button type="button" onClick={() => setImage(undefined)} aria-label="Remove photo"><X size={16} /></button></div>}
+      {image && !text.trim() && <p className="x-composer-hint">Add a caption to post your photo.</p>}
+      {error && <p className="x-composer-error" role="alert">{error}</p>}
+      <div className="x-composer-bar">
+        <input ref={fileInput} type="file" accept="image/*" hidden onChange={(event) => void pick(event)} />
+        <button type="button" className="x-icon-button" onClick={() => fileInput.current?.click()} aria-label="Add photo" title="Add photo" disabled={busy || preparing}><ImagePlus size={20} /></button>
+        <span className="x-composer-safety"><ShieldCheck size={14} /> Be respectful</span>
+        {text.length > 0 && <span className={`x-count ${remaining < 20 ? 'low' : ''}`}>{remaining}</span>}
+        <button type="submit" className="x-primary" disabled={!text.trim() || busy || preparing}>{busy ? 'Posting…' : 'Post'}</button>
+      </div>
+    </div>
+  </form>
+}
 
-function Messages({ onError, error, currentUserId }: { onError: (text: string) => void; error: string; currentUserId: string }) {
- const [threads,setThreads]=useState<Thread[]>([]); const [selected,setSelected]=useState<Thread|null>(null); const [messages,setMessages]=useState<Message[]>([]); const [draft,setDraft]=useState(''); const [refresh,setRefresh]=useState(0)
- useEffect(()=>{let active=true;const load=()=>api<{conversations:Thread[]}>('/conversations').then(({conversations})=>{if(active)setThreads(conversations)}).catch((reason)=>{if(active)onError(reason instanceof Error?reason.message:'Could not load inbox.')});void load();const timer=window.setInterval(()=>void load(),8000);return()=>{active=false;window.clearInterval(timer)}},[refresh,onError])
- useEffect(()=>{if(!selected)return;let active=true;const load=()=>api<{messages:Message[]}>(`/conversations/${selected.id}/messages`).then(({messages})=>{if(active)setMessages(messages)}).catch((reason)=>{if(active)onError(reason instanceof Error?reason.message:'Could not load messages.')});void load();const timer=window.setInterval(()=>void load(),3000);return()=>{active=false;window.clearInterval(timer)}},[selected,onError])
- async function send(event:FormEvent){event.preventDefault();if(!selected||!draft.trim())return;try{const {message}=await api<{message:Message}>(`/conversations/${selected.id}/messages`,{method:'POST',body:JSON.stringify({body:draft.trim()})});setMessages((items)=>[...items,message]);setDraft('');setRefresh(n=>n+1)}catch(reason){onError(reason instanceof Error?reason.message:'Could not send message.') }}
- return <div className="messages-view"><div className="message-heading"><div className="eyebrow"><span className="eyebrow-line"/> YOUR INBOX</div><h1>Good chats start <em>here.</em></h1><p>Private messages sync automatically. You can chat after a mutual Discovery match.</p></div><div className="message-panel"><aside className="thread-list"><div className="thread-title"><h2>Messages</h2><button aria-label="Refresh inbox" onClick={()=>setRefresh(n=>n+1)}><Search size={17}/></button></div>{threads.map((thread)=><button className={`thread-item ${selected?.id===thread.id?'selected':''}`} key={thread.id} onClick={()=>setSelected(thread)}><img src={thread.avatar_url||avatarFallback} alt=""/><span className="thread-meta"><strong>{thread.display_name}</strong><small>{thread.last_message||'Conversation started'}</small></span></button>)}{threads.length===0&&<p className="thread-empty">No matched conversations yet. A chat opens when you both express interest.</p>}</aside><section className="thread-placeholder">{error&&<p role="alert" className="auth-error">{error}</p>}{selected?<><h2>{selected.display_name}</h2><div className="message-history">{messages.map((message)=><p className={`message-bubble ${message.sender_id===currentUserId?'mine':'theirs'}`} key={message.id}>{message.body}<small>{timeAgo(message.created_at)}</small></p>)}</div><form className="reply-box" onSubmit={(event)=>void send(event)}><input value={draft} onChange={(event)=>setDraft(event.target.value)} placeholder="Write a message…" maxLength={2000}/><button aria-label="Send message"><Send size={16}/></button></form></>:<><span className="chat-icon"><MessageCircle size={25}/></span><h2>Pick up a good conversation</h2><p>Your matched conversations appear here. Open Discovery to find a mutual connection.</p><span className="demo-chat-label"><ShieldCheck size={14}/> Private account messages</span></>}</section></div></div>
+export function FeedRail() {
+  return <>
+    <section className="x-card"><h2>Tonight on Beer BROS</h2><div className="x-card-row"><span className="x-muted">Drinking alone?</span><strong>Post a photo and say where you are</strong></div><div className="x-card-row"><span className="x-muted">Found a good spot?</span><strong>Tell people the vibe is there</strong></div><div className="x-card-row"><span className="x-muted">Want a buddy?</span><strong>Swipe in Discover</strong></div></section>
+    <section className="x-card"><h2>Good company, good care</h2><p className="x-card-copy">Drink responsibly, meet in public places, and look out for your people. Report anyone who makes you uncomfortable.</p></section>
+  </>
+}
+
+function Messages({ currentUserId }: { currentUserId: string }) {
+  const [threads, setThreads] = useState<Thread[]>([]); const [selected, setSelected] = useState<Thread | null>(null); const [messages, setMessages] = useState<Message[]>([]); const [draft, setDraft] = useState(''); const [refresh, setRefresh] = useState(0); const [error, setError] = useState('')
+  const history = useRef<HTMLDivElement>(null)
+  useEffect(() => { let active = true; const load = () => api<{conversations: Thread[]}>('/conversations').then(({ conversations }) => { if (active) setThreads(conversations) }).catch((reason) => { if (active) setError(errorText(reason, 'Could not load inbox.')) }); void load(); const timer = window.setInterval(() => void load(), 8000); return () => { active = false; window.clearInterval(timer) } }, [refresh])
+  useEffect(() => { if (!selected) return; let active = true; const load = () => api<{messages: Message[]}>(`/conversations/${selected.id}/messages`).then(({ messages }) => { if (active) setMessages(messages) }).catch((reason) => { if (active) setError(errorText(reason, 'Could not load messages.')) }); void load(); const timer = window.setInterval(() => void load(), 3000); return () => { active = false; window.clearInterval(timer) } }, [selected])
+  useEffect(() => { history.current?.scrollTo({ top: history.current.scrollHeight }) }, [messages.length])
+  async function send(event: FormEvent) { event.preventDefault(); if (!selected || !draft.trim()) return; try { const { message } = await api<{message: Message}>(`/conversations/${selected.id}/messages`, { method: 'POST', body: JSON.stringify({ body: draft.trim() }) }); setMessages((items) => [...items, message]); setDraft(''); setRefresh((n) => n + 1) } catch (reason) { setError(errorText(reason, 'Could not send message.')) } }
+  if (selected) return <div className="x-chat">
+    <div className="x-page-header x-chat-header"><button className="x-icon-button" onClick={() => { setSelected(null); setMessages([]) }} aria-label="Back to messages"><ArrowLeft size={20} /></button><Avatar name={selected.display_name} url={selected.avatar_url} size={32} /><div><h1>{selected.display_name}</h1><span className="x-muted">@{selected.handle}</span></div></div>
+    {error && <p role="alert" className="x-composer-error x-pad">{error}</p>}
+    <div className="x-chat-history" ref={history}>{messages.length === 0 && <p className="x-muted x-pad">Say hi and agree where to meet — somewhere public.</p>}{messages.map((message) => <div className={`x-bubble ${message.sender_id === currentUserId ? 'mine' : 'theirs'}`} key={message.id}><p>{message.body}</p><small>{timeAgo(message.created_at)}</small></div>)}</div>
+    <form className="x-chat-form" onSubmit={(event) => void send(event)}><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Start a new message" aria-label="Write a message" maxLength={2000} /><button aria-label="Send message" disabled={!draft.trim()}><Send size={18} /></button></form>
+  </div>
+  return <div className="x-feed">
+    <div className="x-page-header"><h1>Messages</h1></div>
+    {error && <p role="alert" className="x-composer-error x-pad">{error}</p>}
+    {threads.map((thread) => <button className="x-thread" key={thread.id} onClick={() => { setError(''); setSelected(thread) }}><Avatar name={thread.display_name} url={thread.avatar_url} /><span className="x-thread-text"><span><strong>{thread.display_name}</strong> <span className="x-muted">@{thread.handle}</span></span><span className="x-muted">{thread.last_message || 'You matched — say hi'}</span></span></button>)}
+    {threads.length === 0 && <div className="x-empty"><h2>Welcome to your inbox</h2><p>When you and someone both swipe right in Discover, you can message each other here and agree to meet up.</p></div>}
+  </div>
 }
