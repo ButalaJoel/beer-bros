@@ -6,8 +6,10 @@ import { getSessionSecret } from './auth.js'
 /** Shared PostgreSQL-backed counters. Keys are HMACed so raw IP addresses and user IDs are not stored. */
 export class PostgresRateLimitStore implements Store {
   private windowMs = 60_000
+  /** A unique prefix tells express-rate-limit these are separate stores (avoids false ERR_ERL_DOUBLE_COUNT). */
+  readonly prefix: string
 
-  constructor(private readonly limiter: string) {}
+  constructor(private readonly limiter: string) { this.prefix = `bb-${limiter}:` }
 
   init(options: Options): void {
     this.windowMs = options.windowMs
@@ -29,10 +31,10 @@ export class PostgresRateLimitStore implements Store {
   }
 
   async decrement(key: string): Promise<void> {
-    await pool.query(
-      'UPDATE api_rate_limits SET hits = GREATEST(hits - 1, 0) WHERE limiter=$1 AND key_hash=$2',
-      [this.limiter, this.hash(key)],
-    )
+    // hits must stay above zero (table CHECK), so drop the row instead of going to 0.
+    const keyHash = this.hash(key)
+    await pool.query('DELETE FROM api_rate_limits WHERE limiter=$1 AND key_hash=$2 AND hits <= 1', [this.limiter, keyHash])
+    await pool.query('UPDATE api_rate_limits SET hits = hits - 1 WHERE limiter=$1 AND key_hash=$2 AND hits > 1', [this.limiter, keyHash])
   }
 
   async resetKey(key: string): Promise<void> {

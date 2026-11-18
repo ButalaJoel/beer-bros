@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import { createServer } from 'node:http'
+import { isIP } from 'node:net'
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -14,10 +15,27 @@ import { router } from './routes.js'
 import { passwordResetRouter } from './password-reset.js'
 import { PostgresRateLimitStore, startRateLimitCleanup } from './rate-limit-store.js'
 
+// Log stray async errors instead of letting one bad request take the whole API offline.
+process.on('unhandledRejection', (reason) => console.error('Unhandled rejection:', reason instanceof Error ? reason.message : reason))
+
 const app = express()
 const server = createServer(app)
-const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, store: new PostgresRateLimitStore('auth'), message: { error: 'Too many attempts. Wait 15 minutes, then try again.' } })
-const writeLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false, store: new PostgresRateLimitStore('writes'), message: { error: 'You’re going a bit fast. Wait a minute, then try again.' } })
+/**
+ * Requests reach this API through Vercel's rewrite and then Render's own proxies, so req.ip is an
+ * internal Render address shared by every visitor. Count each visitor by the client address Vercel
+ * passes on instead, falling back to req.ip. A spoofed header only affects that caller's own counter,
+ * and logins are also limited per email address below.
+ */
+function clientKey(req: express.Request) {
+  const header = (name: string) => String(req.headers[name] ?? '').split(',')[0].trim()
+  const candidate = [header('x-vercel-forwarded-for'), header('x-real-ip'), header('x-forwarded-for')].find((value) => isIP(value))
+  return candidate ?? req.ip ?? 'unknown'
+}
+const limiterDefaults = { standardHeaders: 'draft-8' as const, legacyHeaders: false, keyGenerator: clientKey }
+const generalLimiter = rateLimit({ ...limiterDefaults, windowMs: 60_000, limit: 300, store: new PostgresRateLimitStore('general'), message: { error: 'Too many requests. Wait a minute, then try again.' } })
+const authLimiter = rateLimit({ ...limiterDefaults, windowMs: 15 * 60_000, limit: 30, store: new PostgresRateLimitStore('auth'), message: { error: 'Too many attempts. Wait 15 minutes, then try again.' } })
+const loginEmailLimiter = rateLimit({ ...limiterDefaults, windowMs: 15 * 60_000, limit: 10, skipSuccessfulRequests: true, keyGenerator: (req) => String(req.body?.email ?? '').trim().toLowerCase() || clientKey(req), store: new PostgresRateLimitStore('login-email'), message: { error: 'Too many wrong passwords for this account. Wait 15 minutes, or use “Forgot password?”.' } })
+const writeLimiter = rateLimit({ ...limiterDefaults, windowMs: 60_000, limit: 60, store: new PostgresRateLimitStore('writes'), message: { error: 'You’re going a bit fast. Wait a minute, then try again.' } })
 const origins = (process.env.WEB_ORIGIN ?? 'http://localhost:5173').split(',').map((origin) => origin.trim()).filter(Boolean)
 const allowedOrigins = new Set(origins)
 const corsOptions: cors.CorsOptions = {
@@ -39,7 +57,7 @@ const photoPostJson = express.json({ limit: '1600kb' })
 const defaultJson = express.json({ limit: '32kb' })
 app.use((req, res, next) => (req.method === 'POST' && req.path === '/api/stories' ? photoPostJson : defaultJson)(req, res, next))
 app.use(cookieParser())
-app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false, store: new PostgresRateLimitStore('general') }))
+app.use(generalLimiter)
 
 app.use('/api', (req, res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next()
@@ -48,6 +66,7 @@ app.use('/api', (req, res, next) => {
   return next()
 })
 app.use('/api/auth', authLimiter)
+app.post('/api/auth/login', loginEmailLimiter)
 app.use('/api', (req, res, next) => ['POST', 'PUT', 'DELETE'].includes(req.method) ? writeLimiter(req, res, next) : next())
 app.use('/api', passwordResetRouter)
 app.use('/api', router)
