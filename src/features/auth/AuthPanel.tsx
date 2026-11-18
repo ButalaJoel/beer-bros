@@ -1,9 +1,9 @@
 import { FormEvent, useState } from 'react'
-import { Beer, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Beer, ShieldCheck } from 'lucide-react'
 import { api, CurrentUser } from '../../lib/api/client'
 
-export default function AuthPanel({ onSignedIn }: { onSignedIn: (user: CurrentUser) => void }) {
-  const [register, setRegister] = useState(false)
+export default function AuthPanel({ onSignedIn, initialMode = 'login', onBack }: { onSignedIn: (user: CurrentUser) => void; initialMode?: 'login' | 'register'; onBack?: () => void }) {
+  const [register, setRegister] = useState(initialMode === 'register')
   const [resetStep, setResetStep] = useState<'none' | 'email' | 'code'>('none')
   const [resetEmail, setResetEmail] = useState('')
   const [info, setInfo] = useState('')
@@ -58,9 +58,10 @@ export default function AuthPanel({ onSignedIn }: { onSignedIn: (user: CurrentUs
   }
   return <main className="x-auth">
     <section className="x-auth-card">
+      {onBack && <button className="x-auth-back" onClick={onBack}><ArrowLeft size={18} /> Keep browsing</button>}
       <span className="x-auth-logo"><Beer size={40} strokeWidth={2.2} /></span>
-      <h1>{register ? 'Create your account' : 'Find your drinking buddy.'}</h1>
-      {!register && <p className="x-auth-lead">Post where you’re drinking, see where the vibe is, and swipe to meet good company nearby.</p>}
+      <h1>{register ? 'Create your free account' : 'Find your drinking buddy.'}</h1>
+      <p className="x-auth-lead">{register ? 'Beer BROS is free to join. No fees, no card — just a few details.' : 'Post where you’re drinking, see where the vibe is, and swipe to meet good company nearby. Free to join.'}</p>
       <form onSubmit={submit} className="x-auth-form">
         {register && <input name="displayName" autoComplete="name" required maxLength={60} placeholder="Name" aria-label="Name" />}
         <input name="email" type="email" autoComplete="email" required maxLength={254} placeholder="Email" aria-label="Email" />

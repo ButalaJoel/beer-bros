@@ -16,8 +16,8 @@ import { PostgresRateLimitStore, startRateLimitCleanup } from './rate-limit-stor
 
 const app = express()
 const server = createServer(app)
-const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, store: new PostgresRateLimitStore('auth') })
-const writeLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false, store: new PostgresRateLimitStore('writes') })
+const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, store: new PostgresRateLimitStore('auth'), message: { error: 'Too many attempts. Wait 15 minutes, then try again.' } })
+const writeLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false, store: new PostgresRateLimitStore('writes'), message: { error: 'You’re going a bit fast. Wait a minute, then try again.' } })
 const origins = (process.env.WEB_ORIGIN ?? 'http://localhost:5173').split(',').map((origin) => origin.trim()).filter(Boolean)
 const allowedOrigins = new Set(origins)
 const corsOptions: cors.CorsOptions = {

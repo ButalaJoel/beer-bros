@@ -2,7 +2,7 @@ import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { pool } from './db.js'
-import { issueSession, requireAuth, sessionCookie } from './auth.js'
+import { issueSession, requireAuth, optionalAuth, sessionCookie } from './auth.js'
 
 export const router = Router()
 function isConfiguredAdmin(email: string) { return (process.env.ADMIN_EMAILS ?? '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean).includes(email.toLowerCase()) }
@@ -98,7 +98,7 @@ const requireAdmin = (req: import('express').Request, res: import('express').Res
   next()
 }
 const announcementBody = z.object({ title: z.string().trim().min(1).max(120), body: z.string().trim().min(1).max(2000), status: z.enum(['draft', 'published', 'archived']), startsAt: z.string().datetime().optional(), endsAt: z.string().datetime().nullable().optional() }).refine((item) => !item.endsAt || !item.startsAt || item.endsAt > item.startsAt)
-router.get('/announcements', requireAuth, async (_req, res, next) => {
+router.get('/announcements', optionalAuth, async (_req, res, next) => {
   try { const result = await pool.query(`SELECT id,title,body,starts_at,ends_at FROM announcements WHERE status='published' AND starts_at<=now() AND (ends_at IS NULL OR ends_at>now()) ORDER BY starts_at DESC LIMIT 5`); res.json({ announcements: result.rows }) } catch (error) { next(error) }
 })
 router.get('/admin/reports', requireAuth, requireAdmin, async (_req, res, next) => {
@@ -111,21 +111,22 @@ router.get('/admin/announcements', requireAuth, requireAdmin, async (_req,res,ne
 router.post('/admin/announcements', requireAuth, requireAdmin, async (req,res,next)=>{try{const parsed=announcementBody.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Check the announcement title, message, and dates.'});const item=parsed.data;const result=await pool.query(`INSERT INTO announcements(title,body,status,starts_at,ends_at,created_by) VALUES($1,$2,$3,COALESCE($4::timestamptz,now()),$5,$6) RETURNING id,title,body,status,starts_at,ends_at,created_at`,[item.title,item.body,item.status,item.startsAt??null,item.endsAt??null,req.user!.id]);await pool.query(`INSERT INTO admin_audit_log(admin_user_id,action,entity_type,entity_id) VALUES($1,'announcement:create','announcement',$2)`,[req.user!.id,result.rows[0].id]);res.status(201).json({announcement:result.rows[0]})}catch(error){next(error)}})
 router.patch('/admin/announcements/:announcementId', requireAuth, requireAdmin, async (req,res,next)=>{try{const parsed=announcementBody.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Check the announcement title, message, and dates.'});const item=parsed.data;const result=await pool.query(`UPDATE announcements SET title=$1,body=$2,status=$3,starts_at=COALESCE($4::timestamptz,now()),ends_at=$5,updated_at=now() WHERE id=$6 RETURNING id,title,body,status,starts_at,ends_at,created_at`,[item.title,item.body,item.status,item.startsAt??null,item.endsAt??null,req.params.announcementId]);if(!result.rowCount)return res.status(404).json({error:'Announcement not found.'});await pool.query(`INSERT INTO admin_audit_log(admin_user_id,action,entity_type,entity_id) VALUES($1,'announcement:update','announcement',$2)`,[req.user!.id,req.params.announcementId]);res.json({announcement:result.rows[0]})}catch(error){next(error)}})
 
-router.get('/stories', requireAuth, async (req, res, next) => {
+router.get('/stories', optionalAuth, async (req, res, next) => {
   try {
-    const followingOnly = req.query.feed === 'following'
+    const viewerId = req.user?.id ?? null
+    const followingOnly = Boolean(viewerId) && req.query.feed === 'following'
     const result = await pool.query(
       `SELECT s.id, s.author_id, s.body, s.topic_tags, s.created_at, (s.image_url IS NOT NULL) AS has_image, p.handle, p.display_name, p.avatar_url, p.broad_area,
         (SELECT count(*)::int FROM story_likes l WHERE l.story_id=s.id) AS like_count,
         (SELECT count(*)::int FROM story_comments c WHERE c.story_id=s.id AND c.deleted_at IS NULL) AS reply_count,
         EXISTS (SELECT 1 FROM story_likes mine WHERE mine.story_id=s.id AND mine.user_id=$1) AS liked_by_me,
         EXISTS (SELECT 1 FROM follows mine WHERE mine.follower_id=$1 AND mine.followed_id=s.author_id) AS followed_by_me,
-        (s.author_id=$1) AS own_story
+        COALESCE(s.author_id=$1, false) AS own_story
        FROM stories s JOIN profiles p ON p.user_id=s.author_id
        WHERE s.deleted_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=s.author_id) OR (b.blocker_id=s.author_id AND b.blocked_id=$1))
          AND ($2::boolean = false OR s.author_id=$1 OR EXISTS (SELECT 1 FROM follows f WHERE f.follower_id=$1 AND f.followed_id=s.author_id))
-       ORDER BY s.created_at DESC LIMIT 30`, [req.user!.id, followingOnly],
+       ORDER BY s.created_at DESC LIMIT 30`, [viewerId, followingOnly],
     )
     return res.json({ stories: result.rows })
   } catch (error) { next(error) }
@@ -143,13 +144,13 @@ router.post('/stories', requireAuth, async (req, res, next) => {
   } catch (error) { next(error) }
 })
 
-router.get('/stories/:storyId/image', requireAuth, async (req, res, next) => {
+router.get('/stories/:storyId/image', optionalAuth, async (req, res, next) => {
   try {
     if (!z.string().uuid().safeParse(req.params.storyId).success) return res.status(404).end()
     const result = await pool.query(
       `SELECT s.image_url FROM stories s WHERE s.id=$1 AND s.deleted_at IS NULL AND s.image_url IS NOT NULL
          AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=s.author_id) OR (b.blocker_id=s.author_id AND b.blocked_id=$2))`,
-      [req.params.storyId, req.user!.id],
+      [req.params.storyId, req.user?.id ?? null],
     )
     const match = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(result.rows[0]?.image_url ?? '')
     if (!match) return res.status(404).end()
@@ -179,7 +180,7 @@ router.delete('/stories/:storyId/likes', requireAuth, async (req, res, next) => 
   catch (error) { next(error) }
 })
 
-router.get('/stories/:storyId/comments', requireAuth, async (req, res, next) => {
+router.get('/stories/:storyId/comments', optionalAuth, async (req, res, next) => {
   try {
     const result = await pool.query(
       `SELECT c.id, c.body, c.created_at, p.handle, p.display_name, p.avatar_url
@@ -187,7 +188,7 @@ router.get('/stories/:storyId/comments', requireAuth, async (req, res, next) => 
        WHERE c.story_id=$1 AND c.deleted_at IS NULL AND s.deleted_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=s.author_id) OR (b.blocker_id=s.author_id AND b.blocked_id=$2))
          AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=c.author_id) OR (b.blocker_id=c.author_id AND b.blocked_id=$2))
-       ORDER BY c.created_at ASC LIMIT 100`, [req.params.storyId, req.user!.id],
+       ORDER BY c.created_at ASC LIMIT 100`, [req.params.storyId, req.user?.id ?? null],
     )
     return res.json({ comments: result.rows })
   } catch (error) { next(error) }

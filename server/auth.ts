@@ -47,5 +47,24 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 }
 
+/** Like requireAuth, but lets visitors without an account through as guests (req.user stays undefined). */
+export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
+  if (!tokenFromRequest(req)) return next()
+  try {
+    const claims = jwt.verify(tokenFromRequest(req)!, secret!, { issuer: 'beer-bros-api', audience: 'beer-bros-web' })
+    if (typeof claims === 'string' || !claims.sub) return next()
+    const result = await pool.query<AuthUser>(
+      `SELECT u.id, u.email, p.handle, p.display_name FROM users u
+       JOIN profiles p ON p.user_id = u.id WHERE u.id = $1 AND u.deleted_at IS NULL`,
+      [claims.sub],
+    )
+    if (result.rowCount) {
+      const adminEmails = (process.env.ADMIN_EMAILS ?? '').split(',').map((email) => email.trim().toLowerCase()).filter(Boolean)
+      req.user = { ...result.rows[0], is_admin: adminEmails.includes(result.rows[0].email.toLowerCase()) }
+    }
+    next()
+  } catch { next() }
+}
+
 export function getSessionSecret() { return secret! }
 export function getSessionCookieName() { return cookieName }
