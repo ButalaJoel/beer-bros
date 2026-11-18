@@ -22,6 +22,14 @@ const MAX_IMAGE_DATA_URL = 1_400_000
 const imageDataUrl = z.string().max(MAX_IMAGE_DATA_URL).regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/)
 const storyBody = z.object({ body: z.string().trim().min(1).max(500), topicTags: z.array(z.string().trim().min(1).max(32)).max(5).optional(), image: imageDataUrl.optional() })
 const commentBody = z.object({ body: z.string().trim().min(1).max(500) })
+const profileUpdateBody = z.object({
+  displayName: z.string().trim().min(1).max(60).optional(),
+  bio: z.string().trim().max(300).optional(),
+  broadArea: z.string().trim().max(60).optional(),
+  avatar: z.union([z.string().max(600_000).regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/), z.null()]).optional(),
+})
+/** Profile photos are stored as data URLs; lists return a short URL to /users/:id/avatar instead of the photo itself. */
+const avatarSql = `CASE WHEN p.avatar_url LIKE 'data:%' THEN '/api/users/' || p.user_id || '/avatar?v=' || floor(extract(epoch from p.updated_at))::bigint ELSE p.avatar_url END`
 const messageBody = z.object({ body: z.string().trim().min(1).max(2000) })
 const discoveryActionBody = z.object({ targetUserId: z.string().uuid(), action: z.enum(['pass', 'interested']) })
 
@@ -91,7 +99,12 @@ router.post('/auth/login', async (req, res, next) => {
 })
 
 router.post('/auth/logout', (_req, res) => { res.clearCookie(sessionCookie.name, { ...sessionCookie.options, maxAge: undefined }); res.status(204).end() })
-router.get('/auth/me', requireAuth, (req, res) => res.json({ user: { id: req.user!.id, email: req.user!.email, handle: req.user!.handle, displayName: req.user!.display_name, isAdmin: req.user!.is_admin } }))
+router.get('/auth/me', requireAuth, async (req, res, next) => {
+  try {
+    const avatar = await pool.query<{ avatar_url: string | null }>(`SELECT ${avatarSql} AS avatar_url FROM profiles p WHERE p.user_id=$1`, [req.user!.id])
+    return res.json({ user: { id: req.user!.id, email: req.user!.email, handle: req.user!.handle, displayName: req.user!.display_name, isAdmin: req.user!.is_admin, avatarUrl: avatar.rows[0]?.avatar_url ?? null } })
+  } catch (error) { next(error) }
+})
 
 const requireAdmin = (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
   if (!req.user?.is_admin) return res.status(403).json({ error: 'Administrator access required.' })
@@ -111,24 +124,98 @@ router.get('/admin/announcements', requireAuth, requireAdmin, async (_req,res,ne
 router.post('/admin/announcements', requireAuth, requireAdmin, async (req,res,next)=>{try{const parsed=announcementBody.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Check the announcement title, message, and dates.'});const item=parsed.data;const result=await pool.query(`INSERT INTO announcements(title,body,status,starts_at,ends_at,created_by) VALUES($1,$2,$3,COALESCE($4::timestamptz,now()),$5,$6) RETURNING id,title,body,status,starts_at,ends_at,created_at`,[item.title,item.body,item.status,item.startsAt??null,item.endsAt??null,req.user!.id]);await pool.query(`INSERT INTO admin_audit_log(admin_user_id,action,entity_type,entity_id) VALUES($1,'announcement:create','announcement',$2)`,[req.user!.id,result.rows[0].id]);res.status(201).json({announcement:result.rows[0]})}catch(error){next(error)}})
 router.patch('/admin/announcements/:announcementId', requireAuth, requireAdmin, async (req,res,next)=>{try{const parsed=announcementBody.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Check the announcement title, message, and dates.'});const item=parsed.data;const result=await pool.query(`UPDATE announcements SET title=$1,body=$2,status=$3,starts_at=COALESCE($4::timestamptz,now()),ends_at=$5,updated_at=now() WHERE id=$6 RETURNING id,title,body,status,starts_at,ends_at,created_at`,[item.title,item.body,item.status,item.startsAt??null,item.endsAt??null,req.params.announcementId]);if(!result.rowCount)return res.status(404).json({error:'Announcement not found.'});await pool.query(`INSERT INTO admin_audit_log(admin_user_id,action,entity_type,entity_id) VALUES($1,'announcement:update','announcement',$2)`,[req.user!.id,req.params.announcementId]);res.json({announcement:result.rows[0]})}catch(error){next(error)}})
 
+/**
+ * Reposts and pins need the story_reposts table and profiles.pinned_story_id (server/db/schema.sql).
+ * Until the schema update has run, the API keeps working without them, then switches them on by itself.
+ */
+const socialSchema = { ready: false, checkedAt: 0 }
+async function socialSchemaReady() {
+  if (socialSchema.ready || Date.now() - socialSchema.checkedAt < 60_000) return socialSchema.ready
+  socialSchema.checkedAt = Date.now()
+  try {
+    const result = await pool.query<{ ready: boolean }>(`SELECT to_regclass('public.story_reposts') IS NOT NULL
+      AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='pinned_story_id') AS ready`)
+    socialSchema.ready = Boolean(result.rows[0]?.ready)
+  } catch { socialSchema.ready = false }
+  return socialSchema.ready
+}
+
+/** Columns every post row carries. $1 is always the viewer (or null for guests). */
+const storyColumns = (ready: boolean) => `s.id, s.author_id, s.body, s.topic_tags, s.created_at, (s.image_url IS NOT NULL) AS has_image,
+  p.handle, p.display_name, ${avatarSql} AS avatar_url, p.broad_area,
+  (SELECT count(*)::int FROM story_likes l WHERE l.story_id=s.id) AS like_count,
+  (SELECT count(*)::int FROM story_comments c WHERE c.story_id=s.id AND c.deleted_at IS NULL) AS reply_count,
+  ${ready ? '(SELECT count(*)::int FROM story_reposts r WHERE r.story_id=s.id)' : '0'} AS repost_count,
+  EXISTS (SELECT 1 FROM story_likes mine WHERE mine.story_id=s.id AND mine.user_id=$1) AS liked_by_me,
+  ${ready ? 'EXISTS (SELECT 1 FROM story_reposts mine WHERE mine.story_id=s.id AND mine.user_id=$1)' : 'false'} AS reposted_by_me,
+  EXISTS (SELECT 1 FROM follows mine WHERE mine.follower_id=$1 AND mine.followed_id=s.author_id) AS followed_by_me,
+  COALESCE(s.author_id=$1, false) AS own_story`
+const notBlockedWith = (column: string) => `NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=${column}) OR (b.blocker_id=${column} AND b.blocked_id=$1))`
+
 router.get('/stories', optionalAuth, async (req, res, next) => {
   try {
     const viewerId = req.user?.id ?? null
     const followingOnly = Boolean(viewerId) && req.query.feed === 'following'
+    const ready = await socialSchemaReady()
+    if (!followingOnly || !ready) {
+      const result = await pool.query(
+        `SELECT ${storyColumns(ready)}, s.created_at AS activity_at, NULL::text AS reposted_by_handle, NULL::text AS reposted_by_name
+         FROM stories s JOIN profiles p ON p.user_id=s.author_id
+         WHERE s.deleted_at IS NULL AND ${notBlockedWith('s.author_id')}
+           AND ($2::boolean = false OR s.author_id=$1 OR EXISTS (SELECT 1 FROM follows f WHERE f.follower_id=$1 AND f.followed_id=s.author_id))
+         ORDER BY s.created_at DESC LIMIT 30`, [viewerId, followingOnly],
+      )
+      return res.json({ stories: result.rows })
+    }
+    // Following: posts by people you follow (and you), plus what they reposted, newest activity first.
     const result = await pool.query(
-      `SELECT s.id, s.author_id, s.body, s.topic_tags, s.created_at, (s.image_url IS NOT NULL) AS has_image, p.handle, p.display_name, p.avatar_url, p.broad_area,
-        (SELECT count(*)::int FROM story_likes l WHERE l.story_id=s.id) AS like_count,
-        (SELECT count(*)::int FROM story_comments c WHERE c.story_id=s.id AND c.deleted_at IS NULL) AS reply_count,
-        EXISTS (SELECT 1 FROM story_likes mine WHERE mine.story_id=s.id AND mine.user_id=$1) AS liked_by_me,
-        EXISTS (SELECT 1 FROM follows mine WHERE mine.follower_id=$1 AND mine.followed_id=s.author_id) AS followed_by_me,
-        COALESCE(s.author_id=$1, false) AS own_story
-       FROM stories s JOIN profiles p ON p.user_id=s.author_id
-       WHERE s.deleted_at IS NULL
-         AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=s.author_id) OR (b.blocker_id=s.author_id AND b.blocked_id=$1))
-         AND ($2::boolean = false OR s.author_id=$1 OR EXISTS (SELECT 1 FROM follows f WHERE f.follower_id=$1 AND f.followed_id=s.author_id))
-       ORDER BY s.created_at DESC LIMIT 30`, [viewerId, followingOnly],
+      `WITH circle AS (SELECT $1::uuid AS id UNION SELECT followed_id FROM follows WHERE follower_id=$1),
+       items AS (
+         SELECT DISTINCT ON (story_id) story_id, activity_at, reposter_id FROM (
+           SELECT s.id AS story_id, s.created_at AS activity_at, NULL::uuid AS reposter_id FROM stories s WHERE s.author_id IN (SELECT id FROM circle)
+           UNION ALL
+           SELECT r.story_id, r.created_at, r.user_id FROM story_reposts r WHERE r.user_id IN (SELECT id FROM circle)
+         ) x ORDER BY story_id, activity_at DESC)
+       SELECT ${storyColumns(true)}, i.activity_at, rp.handle AS reposted_by_handle, rp.display_name AS reposted_by_name
+       FROM items i JOIN stories s ON s.id=i.story_id JOIN profiles p ON p.user_id=s.author_id LEFT JOIN profiles rp ON rp.user_id=i.reposter_id
+       WHERE s.deleted_at IS NULL AND ${notBlockedWith('s.author_id')}
+       ORDER BY i.activity_at DESC LIMIT 30`, [viewerId],
     )
     return res.json({ stories: result.rows })
+  } catch (error) { next(error) }
+})
+
+router.post('/stories/:storyId/reposts', requireAuth, async (req, res, next) => {
+  try {
+    if (!(await socialSchemaReady())) return res.status(503).json({ error: 'Reposts are being switched on. Try again in a few minutes.' })
+    const story = await pool.query<{ author_id: string }>('SELECT author_id FROM stories WHERE id=$1 AND deleted_at IS NULL', [req.params.storyId])
+    if (!story.rowCount) return res.status(404).json({ error: 'Post not found.' })
+    const blocked = await pool.query('SELECT 1 FROM blocks WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)', [req.user!.id, story.rows[0].author_id])
+    if (blocked.rowCount) return res.status(404).json({ error: 'Post not found.' })
+    await pool.query('INSERT INTO story_reposts (story_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.params.storyId, req.user!.id])
+    return res.status(204).end()
+  } catch (error) { next(error) }
+})
+
+router.delete('/stories/:storyId/reposts', requireAuth, async (req, res, next) => {
+  try {
+    if (!(await socialSchemaReady())) return res.status(204).end()
+    await pool.query('DELETE FROM story_reposts WHERE story_id=$1 AND user_id=$2', [req.params.storyId, req.user!.id])
+    return res.status(204).end()
+  } catch (error) { next(error) }
+})
+
+router.put('/profile/me/pin', requireAuth, async (req, res, next) => {
+  try {
+    if (!(await socialSchemaReady())) return res.status(503).json({ error: 'Pinning is being switched on. Try again in a few minutes.' })
+    const parsed = z.object({ storyId: z.string().uuid().nullable() }).safeParse(req.body)
+    if (!parsed.success) return res.status(400).json({ error: 'Choose a post to pin.' })
+    if (parsed.data.storyId) {
+      const own = await pool.query('SELECT 1 FROM stories WHERE id=$1 AND author_id=$2 AND deleted_at IS NULL', [parsed.data.storyId, req.user!.id])
+      if (!own.rowCount) return res.status(403).json({ error: 'You can only pin your own posts.' })
+    }
+    await pool.query('UPDATE profiles SET pinned_story_id=$2 WHERE user_id=$1', [req.user!.id, parsed.data.storyId])
+    return res.json({ pinnedStoryId: parsed.data.storyId })
   } catch (error) { next(error) }
 })
 
@@ -183,7 +270,7 @@ router.delete('/stories/:storyId/likes', requireAuth, async (req, res, next) => 
 router.get('/stories/:storyId/comments', optionalAuth, async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT c.id, c.body, c.created_at, p.handle, p.display_name, p.avatar_url
+      `SELECT c.id, c.body, c.created_at, p.handle, p.display_name, ${avatarSql} AS avatar_url, COALESCE(c.author_id=$2, false) AS own_comment
        FROM story_comments c JOIN stories s ON s.id=c.story_id JOIN profiles p ON p.user_id=c.author_id
        WHERE c.story_id=$1 AND c.deleted_at IS NULL AND s.deleted_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=s.author_id) OR (b.blocker_id=s.author_id AND b.blocked_id=$2))
@@ -207,6 +294,126 @@ router.post('/stories/:storyId/comments', requireAuth, async (req, res, next) =>
     )
     if (!result.rowCount) return res.status(404).json({ error: 'Story not found.' })
     return res.status(201).json({ comment: result.rows[0] })
+  } catch (error) { next(error) }
+})
+
+const isUuid = (value: string) => z.string().uuid().safeParse(value).success
+
+router.delete('/stories/:storyId', requireAuth, async (req, res, next) => {
+  try {
+    if (!isUuid(req.params.storyId)) return res.status(404).json({ error: 'Post not found.' })
+    const story = await pool.query<{ author_id: string }>('SELECT author_id FROM stories WHERE id=$1 AND deleted_at IS NULL', [req.params.storyId])
+    if (!story.rowCount) return res.status(404).json({ error: 'Post not found.' })
+    const own = story.rows[0].author_id === req.user!.id
+    if (!own && !req.user!.is_admin) return res.status(403).json({ error: 'You can only delete your own posts.' })
+    await pool.query('UPDATE stories SET deleted_at=now(), image_url=NULL WHERE id=$1', [req.params.storyId])
+    if (!own) await pool.query(`INSERT INTO admin_audit_log(admin_user_id,action,entity_type,entity_id) VALUES($1,'story:delete','story',$2)`, [req.user!.id, req.params.storyId])
+    return res.status(204).end()
+  } catch (error) { next(error) }
+})
+
+router.delete('/stories/:storyId/comments/:commentId', requireAuth, async (req, res, next) => {
+  try {
+    if (!isUuid(req.params.commentId)) return res.status(404).json({ error: 'Reply not found.' })
+    const comment = await pool.query<{ author_id: string }>('SELECT author_id FROM story_comments WHERE id=$1 AND story_id=$2 AND deleted_at IS NULL', [req.params.commentId, req.params.storyId])
+    if (!comment.rowCount) return res.status(404).json({ error: 'Reply not found.' })
+    const own = comment.rows[0].author_id === req.user!.id
+    if (!own && !req.user!.is_admin) return res.status(403).json({ error: 'You can only delete your own replies.' })
+    await pool.query('UPDATE story_comments SET deleted_at=now() WHERE id=$1', [req.params.commentId])
+    if (!own) await pool.query(`INSERT INTO admin_audit_log(admin_user_id,action,entity_type,entity_id) VALUES($1,'comment:delete','comment',$2)`, [req.user!.id, req.params.commentId])
+    return res.status(204).end()
+  } catch (error) { next(error) }
+})
+
+router.get('/users/:userId/avatar', optionalAuth, async (req, res, next) => {
+  try {
+    if (!isUuid(req.params.userId)) return res.status(404).end()
+    const result = await pool.query<{ avatar_url: string | null }>('SELECT avatar_url FROM profiles WHERE user_id=$1', [req.params.userId])
+    const match = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(result.rows[0]?.avatar_url ?? '')
+    if (!match) return res.status(404).end()
+    res.set({ 'Content-Type': match[1], 'Cache-Control': 'public, max-age=604800, immutable', 'Cross-Origin-Resource-Policy': 'same-site', 'X-Content-Type-Options': 'nosniff' })
+    return res.send(Buffer.from(match[2], 'base64'))
+  } catch (error) { next(error) }
+})
+
+/** A member's public profile by handle. Hidden (404) when either person has blocked the other. */
+async function findProfile(handle: string, viewerId: string | null) {
+  const result = await pool.query(
+    `SELECT p.user_id AS id, p.handle, p.display_name, p.bio, ${avatarSql} AS avatar_url, p.broad_area, u.created_at AS joined_at,
+       (SELECT count(*)::int FROM follows f WHERE f.followed_id=p.user_id) AS followers,
+       (SELECT count(*)::int FROM follows f WHERE f.follower_id=p.user_id) AS following,
+       (SELECT count(*)::int FROM stories s WHERE s.author_id=p.user_id AND s.deleted_at IS NULL) AS post_count,
+       EXISTS (SELECT 1 FROM follows f WHERE f.follower_id=$2 AND f.followed_id=p.user_id) AS followed_by_me,
+       COALESCE(p.user_id=$2, false) AS is_me
+     FROM profiles p JOIN users u ON u.id=p.user_id
+     WHERE p.handle=lower($1) AND u.deleted_at IS NULL
+       AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=p.user_id) OR (b.blocker_id=p.user_id AND b.blocked_id=$2))`,
+    [handle, viewerId],
+  )
+  return result.rows[0] as { id: string } | undefined
+}
+
+router.get('/profiles/:handle', optionalAuth, async (req, res, next) => {
+  try {
+    const profile = await findProfile(req.params.handle, req.user?.id ?? null)
+    if (!profile) return res.status(404).json({ error: 'This account doesn’t exist.' })
+    return res.json({ profile })
+  } catch (error) { next(error) }
+})
+
+router.get('/profiles/:handle/stories', optionalAuth, async (req, res, next) => {
+  try {
+    const viewerId = req.user?.id ?? null
+    const profile = await findProfile(req.params.handle, viewerId)
+    if (!profile) return res.status(404).json({ error: 'This account doesn’t exist.' })
+    const ready = await socialSchemaReady()
+    const reposts = ready ? `UNION ALL SELECT r.story_id, r.created_at, r.user_id FROM story_reposts r WHERE r.user_id=$2` : ''
+    const pinned = ready ? `(i.reposter_id IS NULL AND s.id = (SELECT pinned_story_id FROM profiles WHERE user_id=$2))` : 'false'
+    const result = await pool.query(
+      `WITH items AS (SELECT s.id AS story_id, s.created_at AS activity_at, NULL::uuid AS reposter_id FROM stories s WHERE s.author_id=$2 ${reposts})
+       SELECT ${storyColumns(ready)}, i.activity_at, rp.handle AS reposted_by_handle, rp.display_name AS reposted_by_name, ${pinned} AS pinned
+       FROM items i JOIN stories s ON s.id=i.story_id JOIN profiles p ON p.user_id=s.author_id LEFT JOIN profiles rp ON rp.user_id=i.reposter_id
+       WHERE s.deleted_at IS NULL AND ${notBlockedWith('s.author_id')}
+       ORDER BY pinned DESC, i.activity_at DESC LIMIT 50`, [viewerId, profile.id],
+    )
+    return res.json({ stories: result.rows })
+  } catch (error) { next(error) }
+})
+
+router.get('/profiles/:handle/replies', optionalAuth, async (req, res, next) => {
+  try {
+    const viewerId = req.user?.id ?? null
+    const profile = await findProfile(req.params.handle, viewerId)
+    if (!profile) return res.status(404).json({ error: 'This account doesn’t exist.' })
+    const result = await pool.query(
+      `SELECT c.id, c.body, c.created_at, c.story_id, COALESCE(c.author_id=$2, false) AS own_comment,
+         s.body AS story_body, sp.handle AS story_handle, sp.display_name AS story_display_name
+       FROM story_comments c JOIN stories s ON s.id=c.story_id JOIN profiles sp ON sp.user_id=s.author_id
+       WHERE c.author_id=$1 AND c.deleted_at IS NULL AND s.deleted_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$2 AND b.blocked_id=s.author_id) OR (b.blocker_id=s.author_id AND b.blocked_id=$2))
+       ORDER BY c.created_at DESC LIMIT 50`, [profile.id, viewerId],
+    )
+    return res.json({ replies: result.rows })
+  } catch (error) { next(error) }
+})
+
+router.patch('/profile/me', requireAuth, async (req, res, next) => {
+  try {
+    const parsed = profileUpdateBody.safeParse(req.body)
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues.some((issue) => issue.path[0] === 'avatar') ? 'That photo could not be used. Try a JPG or PNG.' : 'Check your name (1–60 characters), bio (up to 300) and area (up to 60).' })
+    const { displayName, bio, broadArea, avatar } = parsed.data
+    await pool.query(
+      `UPDATE profiles SET
+         display_name = COALESCE($2, display_name),
+         bio = COALESCE($3, bio),
+         broad_area = CASE WHEN $4::text IS NULL THEN broad_area ELSE NULLIF($4::text, '') END,
+         avatar_url = CASE WHEN $5::boolean THEN $6::text ELSE avatar_url END,
+         updated_at = now()
+       WHERE user_id=$1`,
+      [req.user!.id, displayName ?? null, bio ?? null, broadArea ?? null, avatar !== undefined, avatar ?? null],
+    )
+    const profile = await findProfile(req.user!.handle, req.user!.id)
+    return res.json({ profile })
   } catch (error) { next(error) }
 })
 
@@ -235,9 +442,10 @@ router.get('/search', requireAuth, async (req, res, next) => {
     const query = String(req.query.q ?? '').trim().slice(0, 80)
     if (!query) return res.json({ people: [], stories: [] })
     const pattern = `%${query.replace(/[\\%_]/g, '\\$&')}%`
+    const ready = await socialSchemaReady()
     const [people, matchingStories] = await Promise.all([
       pool.query(
-        `SELECT p.user_id AS id, p.handle, p.display_name, p.bio, p.avatar_url, p.broad_area,
+        `SELECT p.user_id AS id, p.handle, p.display_name, p.bio, ${avatarSql} AS avatar_url, p.broad_area,
            EXISTS (SELECT 1 FROM follows f WHERE f.follower_id=$1 AND f.followed_id=p.user_id) AS followed_by_me
          FROM profiles p JOIN users u ON u.id=p.user_id WHERE u.deleted_at IS NULL AND p.user_id<>$1
            AND (p.handle ILIKE $2 OR p.display_name ILIKE $2 OR p.bio ILIKE $2)
@@ -245,12 +453,7 @@ router.get('/search', requireAuth, async (req, res, next) => {
          ORDER BY p.display_name LIMIT 20`, [req.user!.id, pattern],
       ),
       pool.query(
-        `SELECT s.id, s.author_id, s.body, s.topic_tags, s.created_at, (s.image_url IS NOT NULL) AS has_image, p.handle, p.display_name, p.avatar_url, p.broad_area,
-           (SELECT count(*)::int FROM story_likes l WHERE l.story_id=s.id) AS like_count,
-           (SELECT count(*)::int FROM story_comments c WHERE c.story_id=s.id AND c.deleted_at IS NULL) AS reply_count,
-           EXISTS (SELECT 1 FROM story_likes mine WHERE mine.story_id=s.id AND mine.user_id=$1) AS liked_by_me,
-           EXISTS (SELECT 1 FROM follows mine WHERE mine.follower_id=$1 AND mine.followed_id=s.author_id) AS followed_by_me,
-           (s.author_id=$1) AS own_story
+        `SELECT ${storyColumns(ready)}
          FROM stories s JOIN profiles p ON p.user_id=s.author_id
          WHERE s.deleted_at IS NULL AND (s.body ILIKE $2 OR EXISTS (SELECT 1 FROM unnest(s.topic_tags) tag WHERE tag ILIKE $2))
            AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id=$1 AND b.blocked_id=s.author_id) OR (b.blocker_id=s.author_id AND b.blocked_id=$1))
@@ -282,7 +485,7 @@ router.get('/discovery/candidates', requireAuth, async (req, res, next) => {
     const enabled = await pool.query<{ discovery_enabled: boolean }>('SELECT discovery_enabled FROM profiles WHERE user_id=$1', [req.user!.id])
     if (!enabled.rows[0]?.discovery_enabled) return res.json({ enabled: false, candidates: [] })
     const result = await pool.query(
-      `SELECT u.id, p.handle, p.display_name, p.bio, p.avatar_url, p.broad_area, p.current_drink_id,
+      `SELECT u.id, p.handle, p.display_name, p.bio, ${avatarSql} AS avatar_url, p.broad_area, p.current_drink_id,
          p.interests, extract(year from age(current_date, u.date_of_birth))::int AS age
        FROM users u JOIN profiles p ON p.user_id=u.id
        WHERE u.deleted_at IS NULL AND p.user_id<>$1 AND p.discovery_enabled=true
@@ -298,7 +501,7 @@ router.get('/discovery/candidates', requireAuth, async (req, res, next) => {
 router.get('/discovery/incoming', requireAuth, async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT u.id, p.handle, p.display_name, p.bio, p.avatar_url, p.broad_area, p.current_drink_id,
+      `SELECT u.id, p.handle, p.display_name, p.bio, ${avatarSql} AS avatar_url, p.broad_area, p.current_drink_id,
          p.interests, extract(year from age(current_date, u.date_of_birth))::int AS age, a.created_at
        FROM discovery_actions a JOIN users u ON u.id=a.actor_id JOIN profiles p ON p.user_id=u.id
        WHERE a.target_id=$1 AND a.action='interested' AND u.deleted_at IS NULL
@@ -313,7 +516,7 @@ router.get('/discovery/incoming', requireAuth, async (req, res, next) => {
 router.get('/discovery/matches', requireAuth, async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT m.created_at, other.id, p.handle, p.display_name, p.avatar_url, p.broad_area,
+      `SELECT m.created_at, other.id, p.handle, p.display_name, ${avatarSql} AS avatar_url, p.broad_area,
          c.id AS conversation_id
        FROM matches m
        JOIN users other ON other.id=CASE WHEN m.user_a=$1 THEN m.user_b ELSE m.user_a END AND other.deleted_at IS NULL
@@ -407,7 +610,7 @@ router.post('/reports', requireAuth, async (req, res, next) => {
 router.get('/conversations', requireAuth, async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT c.id, other.id AS other_user_id, p.handle, p.display_name, p.avatar_url,
+      `SELECT c.id, other.id AS other_user_id, p.handle, p.display_name, ${avatarSql} AS avatar_url,
          (SELECT body FROM messages m WHERE m.conversation_id=c.id AND m.deleted_at IS NULL ORDER BY m.created_at DESC LIMIT 1) AS last_message,
          (SELECT created_at FROM messages m WHERE m.conversation_id=c.id AND m.deleted_at IS NULL ORDER BY m.created_at DESC LIMIT 1) AS last_message_at
        FROM conversations c

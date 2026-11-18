@@ -1,6 +1,15 @@
-import { FormEvent, useState } from 'react'
-import { ArrowLeft, Beer, ShieldCheck } from 'lucide-react'
+import { FormEvent, InputHTMLAttributes, useState } from 'react'
+import { ArrowLeft, Beer, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import { api, CurrentUser } from '../../lib/api/client'
+
+/** Password box with a show/hide eye, so people can check what they typed. */
+function PasswordInput(props: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>) {
+  const [visible, setVisible] = useState(false)
+  return <div className="x-password">
+    <input {...props} type={visible ? 'text' : 'password'} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+    <button type="button" onClick={() => setVisible(!visible)} aria-label={visible ? 'Hide password' : 'Show password'} aria-pressed={visible}>{visible ? <EyeOff size={20} /> : <Eye size={20} />}</button>
+  </div>
+}
 
 export default function AuthPanel({ onSignedIn, initialMode = 'login', onBack }: { onSignedIn: (user: CurrentUser) => void; initialMode?: 'login' | 'register'; onBack?: () => void }) {
   const [register, setRegister] = useState(initialMode === 'register')
@@ -34,7 +43,7 @@ export default function AuthPanel({ onSignedIn, initialMode = 'login', onBack }:
           ? <input name="email" type="email" autoComplete="email" required maxLength={254} placeholder="Email" aria-label="Email" defaultValue={resetEmail} />
           : <>
             <input name="code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} placeholder="6-digit code" aria-label="6-digit code" className="x-auth-code" />
-            <input name="password" type="password" autoComplete="new-password" required minLength={8} maxLength={128} placeholder="New password (8+ characters)" aria-label="New password" />
+            <PasswordInput name="password" autoComplete="new-password" required minLength={8} maxLength={128} placeholder="New password (8+ characters)" aria-label="New password" />
           </>}
         {error && <p role="alert" className="x-auth-error">{error}</p>}
         <button className="x-auth-submit" disabled={busy}>{busy ? 'Please wait…' : resetStep === 'email' ? 'Send code' : 'Reset password and log in'}</button>
@@ -65,7 +74,7 @@ export default function AuthPanel({ onSignedIn, initialMode = 'login', onBack }:
       <form onSubmit={submit} className="x-auth-form">
         {register && <input name="displayName" autoComplete="name" required maxLength={60} placeholder="Name" aria-label="Name" />}
         <input name="email" type="email" autoComplete="email" required maxLength={254} placeholder="Email" aria-label="Email" />
-        <input name="password" type="password" autoComplete={register ? 'new-password' : 'current-password'} required minLength={register ? 8 : 1} maxLength={128} placeholder={register ? 'Password (8+ characters)' : 'Password'} aria-label="Password" />
+        <PasswordInput name="password" autoComplete={register ? 'new-password' : 'current-password'} required minLength={register ? 8 : 1} maxLength={128} placeholder={register ? 'Password (8+ characters)' : 'Password'} aria-label="Password" />
         {register && <>
           <label className="x-auth-dob">Date of birth<span>You must be 18 or older. This isn’t shown publicly.</span><input name="dateOfBirth" type="date" required aria-label="Date of birth" /></label>
           <label className="x-auth-check"><input type="checkbox" name="discoveryEnabled" /> Show me in Discover so people nearby can swipe on me</label>

@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Beer, Compass, House, LogIn, LogOut, Mail, PenLine, Search, Settings2, ShieldCheck, X } from 'lucide-react'
+import { Beer, Compass, House, LogIn, Mail, PenLine, Search, Settings2, ShieldCheck, User, X } from 'lucide-react'
 import Avatar from '../components/Avatar'
 import Discovery from '../features/discovery/Discovery'
 import Feed, { FeedRail } from '../features/feed/Feed'
 import AuthPanel from '../features/auth/AuthPanel'
+import Profile from '../features/profile/Profile'
 import AdminDashboard, { AnnouncementNotices } from '../features/admin/AdminDashboard'
 import { api, CurrentUser } from '../lib/api/client'
 import '../x-layout.css'
 
-type Page = 'Home' | 'Search' | 'Discover' | 'Messages' | 'Admin'
+type Page = 'Home' | 'Search' | 'Discover' | 'Messages' | 'Admin' | 'Profile'
 const navItems: { name: Page; label: string; icon: typeof House }[] = [
   { name: 'Home', label: 'Home', icon: House },
   { name: 'Search', label: 'Explore', icon: Search },
@@ -25,15 +26,21 @@ export default function App() {
   const [composeSignal, setComposeSignal] = useState(0)
   const [authView, setAuthView] = useState<null | 'login' | 'register'>(null)
   const [joinReason, setJoinReason] = useState('')
+  const [profileHandle, setProfileHandle] = useState('')
+  const [previous, setPrevious] = useState<Page>('Home')
   useEffect(() => { api<{user: CurrentUser}>('/auth/me').then((result) => setUser(result.user)).catch((reason) => { if (reason instanceof TypeError) setError('The server could not be reached. Check the API deployment and retry.') }).finally(() => setAuthReady(true)) }, [])
-  useEffect(() => { window.scrollTo({ top: 0 }) }, [active])
+  useEffect(() => { window.scrollTo({ top: 0 }) }, [active, profileHandle])
   if (!authReady) return <div className="x-auth"><span className="x-spinner" aria-label="Loading" /></div>
   if (!user && authView) return <div className="app-shell">{error && <div className="connection-error" role="alert">{error}</div>}<AuthPanel key={authView} initialMode={authView} onBack={() => setAuthView(null)} onSignedIn={(signedIn) => { setUser(signedIn); setError(''); setAuthView(null); setJoinReason('') }} /></div>
   const logout = async () => { try { await api('/auth/logout', { method: 'POST' }) } finally { setUser(null); setActive('Home') } }
-  const items = user?.isAdmin ? [...navItems, { name: 'Admin' as Page, label: 'Admin', icon: Settings2 }] : navItems
+  const memberItems = user ? [...navItems, { name: 'Profile' as Page, label: 'Profile', icon: User }] : navItems
+  const items = user?.isAdmin ? [...memberItems, { name: 'Admin' as Page, label: 'Admin', icon: Settings2 }] : memberItems
+  const bottomItems = items.filter((item) => item.name !== 'Profile')
+  const openProfile = (handle: string) => { if (active !== 'Profile') setPrevious(active); setProfileHandle(handle); setActive('Profile') }
   const askToJoin = (reason: string) => setJoinReason(reason)
   const openPage = (name: Page) => {
     if (!user && name !== 'Home') return askToJoin(name === 'Discover' ? 'Create a free account to swipe and find a drinking buddy nearby.' : name === 'Messages' ? 'Create a free account to message the people you match with.' : 'Create a free account to search people and posts.')
+    if (name === 'Profile' && user) return openProfile(user.handle)
     setActive(name)
   }
   const compose = () => { if (!user) return askToJoin('Create a free account to post where you’re drinking.'); setActive('Home'); setComposeSignal((n) => n + 1) }
@@ -43,21 +50,21 @@ export default function App() {
     <aside className="x-sidebar">
       <div className="x-sidebar-inner">
         <a className="x-logo" href="#top" aria-label="Beer BROS home" onClick={() => setActive('Home')}><Beer size={26} strokeWidth={2.2} /></a>
-        <nav aria-label="Main navigation">{items.map(({ name, label, icon: Icon }) => <button key={name} className={`x-nav-item ${active === name ? 'active' : ''}`} onClick={() => openPage(name)} aria-current={active === name ? 'page' : undefined}><Icon size={26} strokeWidth={active === name ? 2.6 : 1.9} /><span>{label}</span></button>)}</nav>
+        <nav aria-label="Main navigation">{items.map(({ name, label, icon: Icon }) => <button key={name} className={`x-nav-item ${active === name && (name !== 'Profile' || profileHandle === user?.handle) ? 'active' : ''}`} onClick={() => openPage(name)} aria-current={active === name ? 'page' : undefined}><Icon size={26} strokeWidth={active === name ? 2.6 : 1.9} /><span>{label}</span></button>)}</nav>
         <button className="x-post-button" onClick={compose}><PenLine size={22} className="x-post-icon" /><span>Post</span></button>
-        {user ? <div className="x-account">
-          <Avatar name={user.displayName} size={40} />
-          <div className="x-account-names"><strong>{user.displayName}</strong><span>@{user.handle}</span></div>
-          <button onClick={logout} aria-label="Log out" title="Log out"><LogOut size={18} /></button>
-        </div> : <button className="x-account x-account-guest" onClick={() => setAuthView('login')}><LogIn size={20} /><span className="x-account-names"><strong>Log in</strong></span></button>}
+        {user ? <button className="x-account x-account-member" onClick={() => openProfile(user.handle)} aria-label="Your profile">
+          <Avatar name={user.displayName} url={user.avatarUrl} size={40} />
+          <span className="x-account-names"><strong>{user.displayName}</strong><span>@{user.handle}</span></span>
+        </button> : <button className="x-account x-account-guest" onClick={() => setAuthView('login')}><LogIn size={20} /><span className="x-account-names"><strong>Log in</strong></span></button>}
       </div>
     </aside>
 
     <main className={`x-main ${active === 'Discover' ? 'x-main-discover' : ''}`}>
-      <header className="x-mobile-top">{user ? <button className="x-mobile-avatar" onClick={logout} aria-label="Log out"><Avatar name={user.displayName} size={32} /></button> : <button className="x-mobile-login" onClick={() => setAuthView('login')}>Log in</button>}<Beer size={24} className="x-mobile-logo" />{user ? <span className="x-mobile-spacer" /> : <button className="x-mobile-join" onClick={() => setAuthView('register')}>Sign up</button>}</header>
-      {active === 'Admin' ? <><div className="x-page-header"><h1>Admin</h1></div><AdminDashboard /></>
+      <header className="x-mobile-top">{user ? <button className="x-mobile-avatar" onClick={() => openProfile(user.handle)} aria-label="Your profile"><Avatar name={user.displayName} url={user.avatarUrl} size={32} /></button> : <button className="x-mobile-login" onClick={() => setAuthView('login')}>Log in</button>}<Beer size={24} className="x-mobile-logo" />{user ? <span className="x-mobile-spacer" /> : <button className="x-mobile-join" onClick={() => setAuthView('register')}>Sign up</button>}</header>
+      {active === 'Profile' && profileHandle ? <Profile key={profileHandle} handle={profileHandle} currentUser={user} onBack={() => setActive(previous === 'Profile' ? 'Home' : previous)} onOpenProfile={openProfile} onRequireAccount={askToJoin} onLogout={() => void logout()} onUserUpdated={(changes) => setUser((current) => current ? { ...current, ...changes } : current)} />
+        : active === 'Admin' ? <><div className="x-page-header"><h1>Admin</h1></div><AdminDashboard /></>
         : active === 'Discover' ? <><div className="x-page-header"><h1>Discover</h1><p>Swipe to find a drinking buddy nearby</p></div><Discovery onOpenConversation={async (otherUserId) => { await api('/conversations', { method: 'POST', body: JSON.stringify({ otherUserId }) }); setActive('Messages') }} /></>
-        : <Feed mode={user ? active : 'Home'} query={query} onQueryChange={setQuery} currentUser={user} composeSignal={composeSignal} onRequireAccount={askToJoin} onJoin={() => setAuthView('register')} announcements={active === 'Home' ? <AnnouncementNotices /> : null} />}
+        : <Feed mode={user && active !== 'Profile' ? active : 'Home'} query={query} onQueryChange={setQuery} currentUser={user} composeSignal={composeSignal} onRequireAccount={askToJoin} onJoin={() => setAuthView('register')} onOpenProfile={openProfile} announcements={active === 'Home' ? <AnnouncementNotices /> : null} />}
     </main>
 
     <aside className="x-aside">
@@ -67,7 +74,7 @@ export default function App() {
       <footer className="x-aside-footer" id="community-guidelines"><ShieldCheck size={13} /> Adults 18+ · Drink responsibly · Meet in public · © 2026 Beer BROS</footer>
     </aside>
 
-    <nav className="x-bottom-nav" aria-label="Main navigation">{items.map(({ name, label, icon: Icon }) => <button key={name} className={active === name ? 'active' : ''} onClick={() => openPage(name)} aria-label={label}><Icon size={24} strokeWidth={active === name ? 2.6 : 1.9} /></button>)}</nav>
+    <nav className="x-bottom-nav" aria-label="Main navigation">{bottomItems.map(({ name, label, icon: Icon }) => <button key={name} className={active === name ? 'active' : ''} onClick={() => openPage(name)} aria-label={label}><Icon size={24} strokeWidth={active === name ? 2.6 : 1.9} /></button>)}</nav>
     {!user && <div className="x-guest-bar"><div><strong>Don’t miss what’s happening tonight</strong><span>Beer BROS is free. Join to post, like, swipe and chat.</span></div><button className="x-ghost" onClick={() => setAuthView('login')}>Log in</button><button className="x-primary" onClick={() => setAuthView('register')}>Sign up</button></div>}
     {joinReason && <div className="x-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="join-title" onClick={() => setJoinReason('')}><div className="x-modal" onClick={(event) => event.stopPropagation()}><button className="x-modal-close" onClick={() => setJoinReason('')} aria-label="Close"><X size={20} /></button><Beer size={34} className="x-modal-logo" /><h2 id="join-title">Join Beer BROS — it’s free</h2><p>{joinReason}</p><p className="x-muted">No fees, no card. Just your name, email, password and birthday (18+).</p><button className="x-primary x-modal-wide" onClick={() => { setJoinReason(''); setAuthView('register') }}>Create free account</button><button className="x-ghost x-modal-wide" onClick={() => { setJoinReason(''); setAuthView('login') }}>Log in</button></div></div>}
     {user && active === 'Home' && <button className="x-fab" onClick={compose} aria-label="New post"><PenLine size={22} /></button>}

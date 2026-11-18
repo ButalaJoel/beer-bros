@@ -44,7 +44,7 @@ const corsOptions: cors.CorsOptions = {
     return callback(null, false)
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   maxAge: 600,
 }
@@ -55,7 +55,7 @@ app.use(helmet())
 app.use(cors(corsOptions))
 const photoPostJson = express.json({ limit: '1600kb' })
 const defaultJson = express.json({ limit: '32kb' })
-app.use((req, res, next) => (req.method === 'POST' && req.path === '/api/stories' ? photoPostJson : defaultJson)(req, res, next))
+app.use((req, res, next) => ((req.method === 'POST' && req.path === '/api/stories') || (req.method === 'PATCH' && req.path === '/api/profile/me') ? photoPostJson : defaultJson)(req, res, next))
 app.use(cookieParser())
 app.use(generalLimiter)
 
@@ -67,7 +67,7 @@ app.use('/api', (req, res, next) => {
 })
 app.use('/api/auth', authLimiter)
 app.post('/api/auth/login', loginEmailLimiter)
-app.use('/api', (req, res, next) => ['POST', 'PUT', 'DELETE'].includes(req.method) ? writeLimiter(req, res, next) : next())
+app.use('/api', (req, res, next) => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ? writeLimiter(req, res, next) : next())
 app.use('/api', passwordResetRouter)
 app.use('/api', router)
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }))

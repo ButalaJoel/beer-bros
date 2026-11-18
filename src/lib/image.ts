@@ -28,3 +28,17 @@ export async function compressPhoto(file: File): Promise<string> {
   }
   throw new Error('That photo is too large to upload. Try another one.')
 }
+
+/** Square, centre-cropped profile photo, small enough to load fast everywhere it appears. */
+export async function compressAvatar(file: File): Promise<string> {
+  if (!file.type.startsWith('image/')) throw new Error('Choose a photo (JPG, PNG or WebP).')
+  if (file.size > 25 * 1024 * 1024) throw new Error('That photo is over 25 MB. Choose a smaller one.')
+  const image = await loadImage(file)
+  const side = Math.min(image.naturalWidth, image.naturalHeight)
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = Math.min(400, side)
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('That photo could not be prepared.')
+  context.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL('image/jpeg', 0.85)
+}

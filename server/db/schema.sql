@@ -159,3 +159,18 @@ CREATE TABLE IF NOT EXISTS api_rate_limits (
   PRIMARY KEY (limiter, key_hash)
 );
 CREATE INDEX IF NOT EXISTS api_rate_limits_reset_idx ON api_rate_limits (reset_at);
+
+-- Reposts and pinned posts (Nov 2026). Safe to run more than once.
+CREATE TABLE IF NOT EXISTS story_reposts (
+  story_id uuid NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (story_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS story_reposts_user_recent_idx ON story_reposts (user_id, created_at DESC);
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS pinned_story_id uuid REFERENCES stories(id) ON DELETE SET NULL;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'beer_bros_app') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON story_reposts TO beer_bros_app;
+  END IF;
+END $$;
